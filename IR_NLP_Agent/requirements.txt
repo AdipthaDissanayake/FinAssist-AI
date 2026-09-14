@@ -1,0 +1,6 @@
+pypdf>=5.0.0
+google-genai>=1.0.0
+tavily-python>=0.7.0
+
+# Optional NLP upgrade:
+# spacy>=3.7.0

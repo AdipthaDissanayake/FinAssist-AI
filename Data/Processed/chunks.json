@@ -1,0 +1,30 @@
+[
+  {
+    "chunk_id": "demo_finance_knowledge.txt::p1::c1",
+    "source": "demo_finance_knowledge.txt",
+    "source_path": "C:\\Users\\adipt\\OneDrive\\Desktop\\Finassist_AI\\FinAssist-AI\\Data\\Raw\\demo_finance_knowledge.txt",
+    "page": 1,
+    "text": "Loans and repayment risk Taking a loan creates a repayment obligation. Before borrowing, a person should consider the total payment amount, the repayment schedule, possible fees, and whether income is sufficient to make payments on time. Missed or late payments can lead to additional charges and may affect a borrower's credit record. A variable interest rate can increase the cost of borrowing when rates rise."
+  },
+  {
+    "chunk_id": "demo_investment_guidance.txt::p1::c2",
+    "source": "demo_investment_guidance.txt",
+    "source_path": "C:\\Users\\adipt\\OneDrive\\Desktop\\Finassist_AI\\FinAssist-AI\\Data\\Raw\\demo_investment_guidance.txt",
+    "page": 1,
+    "text": "Investment diversification and concentration risk This synthetic educational material is for testing the retrieval pipeline only. It must be replaced with reliable, cited financial documents before final submission. Putting all savings into a single investment creates concentration risk. If that investment performs poorly, a large part of the portfolio may lose value. Diversification means spreading investments across different assets or sectors. It can reduce exposure to the poor performance of one holding, although it does not eliminate the possibility of loss."
+  },
+  {
+    "chunk_id": "demo_liquidity_guidance.txt::p1::c3",
+    "source": "demo_liquidity_guidance.txt",
+    "source_path": "C:\\Users\\adipt\\OneDrive\\Desktop\\Finassist_AI\\FinAssist-AI\\Data\\Raw\\demo_liquidity_guidance.txt",
+    "page": 1,
+    "text": "Liquidity risk This synthetic educational material is for testing the retrieval pipeline only. It must be replaced with reliable, cited financial documents before final submission. Liquidity describes how easily an investment can be converted into cash without a major reduction in value. Some investments may be difficult to sell quickly. A person who needs money in the short term should consider whether an investment can be accessed when needed and whether early withdrawal or selling may cause a loss or penalty."
+  },
+  {
+    "chunk_id": "demo_savings_guidance.txt::p1::c4",
+    "source": "demo_savings_guidance.txt",
+    "source_path": "C:\\Users\\adipt\\OneDrive\\Desktop\\Finassist_AI\\FinAssist-AI\\Data\\Raw\\demo_savings_guidance.txt",
+    "page": 1,
+    "text": "Savings and fixed deposits This synthetic educational material is for testing the retrieval pipeline only. It must be replaced with reliable, cited financial documents before final submission. Savings products and fixed deposits may provide a stated interest rate, but early withdrawal conditions can apply. People should review the deposit term, interest calculation, maturity date, and any conditions or penalties before committing money. Keeping an emergency fund separate from long-term investments can help manage unexpected expenses."
+  }
+]
