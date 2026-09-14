@@ -5,6 +5,9 @@ This agent retrieves current, source-linked financial evidence using Tavily Sear
 ## What it demonstrates
 
 - NLP query preprocessing and explainable finance entity extraction.
+- Conservative finance typo correction before domain classification and retrieval (for example, `loen` → `loan`), with the correction recorded transparently.
+- An explainable finance-domain guard that avoids web search for unrelated questions.
+- Safe financial-harm guidance for betting/gambling risks, while declining tips, odds, predictions, and strategies.
 - Tavily web retrieval, which returns title, URL, snippet, and relevance score.
 - A trusted-domain allow-list so financial evidence comes from regulators, central banks, stock exchanges, and international financial institutions.
 - Structured JSON evidence for the Orchestrator Agent.
