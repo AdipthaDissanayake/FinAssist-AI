@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 if __package__:
     from .Extraction.E1 import extract_documents
     from .Preprocessing.P1 import chunk_documents, save_chunks
@@ -42,6 +44,11 @@ else:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Let the IR module run both by itself and through the FastAPI backend. The
+# project-root file is preferred; the existing agent-level file remains a
+# supported development fallback. Secrets stay in ignored .env files.
+load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(PROJECT_ROOT / "IR_NLP_Agent" / ".env")
 DEFAULT_RAW_DIRECTORY = PROJECT_ROOT / "Data" / "Raw"
 DEFAULT_CHUNKS_FILE = PROJECT_ROOT / "Data" / "Processed" / "chunks.json"
 
