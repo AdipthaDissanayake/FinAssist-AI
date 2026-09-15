@@ -146,17 +146,49 @@ function Welcome({ onSuggestion, inputRef }) {
 
 function MessageCard({ message, onSuggestion }) {
   const retrieval = message.metadata?.retrieval;
+  const riskAnalysis = message.metadata?.risk_analysis;
   const suggestedQuestions = message.metadata?.suggested_questions;
   const isUser = message.role === "user";
   return <article className={`message ${isUser ? "user" : "assistant"}`}>
     <div className="avatar">{isUser ? "You" : "FA"}</div>
     <div className="message-body">
       <p className="message-role">{isUser ? "You" : "FinAssist"}</p>
-      <div className="message-text">{message.content}</div>
+      {riskAnalysis ? <RiskAnalysisResult analysis={riskAnalysis} /> : <div className="message-text">{message.content}</div>}
       {retrieval?.evidence?.length > 0 && <EvidenceCards evidence={retrieval.evidence} />}
       {suggestedQuestions?.length > 0 && <SuggestedQuestions questions={suggestedQuestions} onSelect={onSuggestion} />}
     </div>
   </article>;
+}
+
+function RiskAnalysisResult({ analysis }) {
+  const sources = new Map((analysis.sources || []).map((source) => [String(source.id), source]));
+  return <section className="risk-result" aria-label="Risk analysis">
+    <div className="risk-summary">
+      <p className="result-heading">Risk summary</p>
+      <p>{analysis.summary}</p>
+    </div>
+    <div className="identified-risks">
+      <p className="result-heading">Identified risks</p>
+      {analysis.risks?.length > 0 ? analysis.risks.map((risk) => <article className="risk-card" key={risk.name}>
+        <div className="risk-card-heading">
+          <h3>{risk.name}</h3>
+          <span className={`risk-level risk-level-${String(risk.level).toLowerCase()}`}>{risk.level}</span>
+        </div>
+        <p>{risk.explanation}</p>
+        <div className="risk-sources">
+          <span>Supporting source{risk.evidence_ids?.length === 1 ? "" : "s"}</span>
+          {risk.evidence_ids?.map((evidenceId) => {
+            const source = sources.get(String(evidenceId));
+            if (!source) return null;
+            return source.url ? <a href={source.url} target="_blank" rel="noreferrer" key={String(evidenceId)}>
+              {source.source || "Retrieved source"}<Icon name="external" />
+            </a> : <strong key={String(evidenceId)}>{source.source || "Retrieved source"}</strong>;
+          })}
+        </div>
+      </article>) : <p className="no-risks">The available evidence did not support a specific risk category.</p>}
+    </div>
+    {analysis.disclaimer && <p className="risk-disclaimer">{analysis.disclaimer}</p>}
+  </section>;
 }
 
 function SuggestedQuestions({ questions, onSelect }) {

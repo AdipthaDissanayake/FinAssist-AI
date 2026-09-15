@@ -209,7 +209,7 @@ Test categories and actual offline result:
 
 | Metric | Result | Interpretation |
 | --- | ---: | --- |
-| Risk identification accuracy | 6/6 = 100% | All six controlled normal cases retained exactly the expected risk category. |
+| Risk identification accuracy | 6/6 = 100% | All six controlled normal cases retained exactly the expected supported risk categories, including four risks for the variable-rate loan case. |
 | Evidence citation validity | 18/18 = 100% | Every retained summary/risk citation existed in the supplied evidence. |
 | Unsupported-claim rate after validation | 0/7 = 0% | No retained risk was outside its case's expected supported category. |
 | Disclaimer presence | 11/11 = 100% | Every successful controlled response included the educational disclaimer. |

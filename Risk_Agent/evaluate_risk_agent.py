@@ -80,13 +80,23 @@ CASES = [
         "variable_rate_loan",
         "normal",
         "What are the risks of taking a variable-rate loan?",
-        [evidence("E1", "A variable loan rate can increase borrowing costs when interest rates rise.")],
+        [
+            evidence("E1", "A variable loan rate can increase borrowing costs when interest rates rise."),
+            evidence("E2", "Higher loan payments can make it harder for a borrower to keep up with repayments."),
+            evidence("E3", "A borrower may need cash quickly but have less liquidity when variable loan payments increase."),
+            evidence("E4", "Missed loan repayments can affect a borrower's credit record and future access to credit."),
+        ],
         model_output(
-            "Variable borrowing costs may increase.",
-            ["E1"],
-            [risk("Interest-rate risk", "Medium", "The evidence identifies rate changes but not exact severity.", "Higher rates may raise borrowing costs.", ["E1"])],
+            "Variable loan costs can rise and may create repayment, liquidity, and credit consequences.",
+            ["E1", "E2", "E3", "E4"],
+            [
+                risk("Interest-rate risk", "Medium", "The evidence identifies rate changes but not exact severity.", "Higher rates may raise borrowing costs.", ["E1"]),
+                risk("Repayment risk", "Medium", "The evidence describes difficulty keeping up with payments but not precise severity.", "Higher payments may make repayment harder.", ["E2"]),
+                risk("Liquidity risk", "Medium", "The evidence describes reduced access to cash but not a precise amount.", "Higher payments may leave less cash available when it is needed.", ["E3"]),
+                risk("Credit risk", "Medium", "The evidence describes credit-record effects but not a quantified likelihood.", "Missed payments may affect the borrower's credit record and future credit access.", ["E4"]),
+            ],
         ),
-        {"Interest-rate risk"},
+        {"Interest-rate risk", "Repayment risk", "Liquidity risk", "Credit risk"},
     ),
     EvaluationCase(
         "missed_repayment",
