@@ -1,0 +1,10 @@
+flowchart TD
+    E[Retrieved evidence\ntext, source, URL, page, ID] --> API[Risk Agent API\nPOST /analyze]
+    API --> I[Input validation\nPydantic schema]
+    I --> P[Grounded prompt construction\nuntrusted-data instructions]
+    P --> G[Gemini LLM\nstructured JSON response]
+    G --> V[Response validation\nJSON + required fields]
+    V --> R[Risk validation\ncategory + level + level_reason]
+    R --> C[Evidence validation\nsummary/risk IDs]
+    C --> O[Validated structured output\nsummary, risks, sources, disclaimer]
+    O --> ORCH[Orchestrator\nfinal response + agent trace]

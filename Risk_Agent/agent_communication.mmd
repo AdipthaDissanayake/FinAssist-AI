@@ -1,0 +1,9 @@
+flowchart LR
+    IR[Information Retrieval Agent\nTavily evidence] -->|Python dict: query + evidence| ORCH[Orchestrator Agent]
+    ORCH -->|In-process Python call:\nanalyze_financial_risks(query, evidence)| RISK[Risk Analysis Agent]
+    RISK -->|Gemini SDK request\ngrounded prompt| GEMINI[Gemini LLM]
+    GEMINI -->|Raw structured response| RISK
+    RISK -->|Validated risk_analysis dict| ORCH
+    ORCH -->|HTTP/JSON backend response\nfinal_response + agent_trace| CLIENT[Backend / Frontend]
+
+    API[Optional independent API\nPOST /analyze] -.-> RISK

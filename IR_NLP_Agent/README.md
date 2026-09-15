@@ -39,6 +39,13 @@ $env:TAVILY_INCLUDE_DOMAINS="cbsl.gov.lk,sec.gov.lk,cse.lk,imf.org,worldbank.org
 
 Do not put the API key in source code, GitHub, screenshots, or a report. The Security Agent should also reject unsafe inputs before sending them to Gemini.
 
+### Local proxy troubleshooting
+
+FinAssist uses direct HTTPS for Tavily by default because stale `HTTP_PROXY`,
+`HTTPS_PROXY`, or `ALL_PROXY` variables can prevent web retrieval. If your
+deployment intentionally uses a managed proxy, set
+`TAVILY_USE_SYSTEM_PROXY=true` in its private environment.
+
 ## Gemini's role: risk reasoning and generation
 
 Tavily is the Information Retrieval tool. Mahee's Risk Agent should give the resulting `evidence` list to Gemini and instruct Gemini to explain risks using only that evidence, cite its URLs, and include an educational-not-advice disclaimer.

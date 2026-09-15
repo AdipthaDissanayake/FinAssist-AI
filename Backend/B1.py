@@ -23,8 +23,8 @@ from sqlalchemy.orm import Session
 
 from .database import get_database_session, initialise_database
 from .models import Chat, Message, RetrievalEvidence, RetrievalRun
-from IR_NLP_Agent.main import retrieve_financial_evidence
 from IR_NLP_Agent.NLP.N1 import DomainAssessment, FinanceNLP
+from Orchestrator_Agent.O1 import AgentWorkflowError, orchestrate_financial_question
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -102,12 +102,7 @@ def list_messages(chat_id: str, database: Session = Depends(get_database_session
 def add_message(
     chat_id: str, request: MessageCreateRequest, database: Session = Depends(get_database_session)
 ) -> dict[str, Any]:
-    """Store a question and source-backed IR result.
-
-    Shaji's Orchestrator can later replace this direct IR invocation. Mahee's
-    Risk Agent should read `retrieval.evidence`, call Gemini, and store an
-    independent analysis message without changing these IR tables.
-    """
+    """Store a question and run the IR → Risk Analysis agent workflow."""
     chat = _require_chat(database, chat_id)
     corrected_query, spelling_corrections = finance_nlp.correct_finance_spelling(request.content.strip())
     domain_assessment = finance_nlp.assess_domain(corrected_query)
@@ -150,8 +145,9 @@ def add_message(
         }
 
     try:
-        retrieval = retrieve_financial_evidence(corrected_query, top_k=request.top_k, engine="tavily")
-    except (RuntimeError, ValueError) as exc:
+        workflow = orchestrate_financial_question(corrected_query, top_k=request.top_k)
+        retrieval = workflow["retrieval"]
+    except AgentWorkflowError as exc:
         failure = RetrievalRun(
             message_id=user_message.id,
             status="failed",
@@ -163,14 +159,14 @@ def add_message(
         assistant_message = Message(
             chat_id=chat.id,
             role="assistant",
-            content="I could not retrieve sources for this question. Please try again shortly.",
-            extra_data={"agent": "information-retrieval", "retrieval_run_id": failure.id},
+            content="I could not complete the source-backed risk analysis. Please try again shortly.",
+            extra_data={"agent": "orchestrator", "retrieval_run_id": failure.id},
         )
         database.add(assistant_message)
         database.commit()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Source retrieval is temporarily unavailable. Please try again shortly.",
+            detail="The source-backed risk analysis is temporarily unavailable. Please try again shortly.",
         ) from exc
 
     retrieval_run = RetrievalRun(
@@ -197,11 +193,12 @@ def add_message(
     assistant_message = Message(
         chat_id=chat.id,
         role="assistant",
-        content=_retrieval_success_message(spelling_corrections),
+        content=_workflow_success_message(workflow, spelling_corrections),
         extra_data={
-            "agent": "information-retrieval",
+            "agent": "orchestrator",
             "retrieval_run_id": retrieval_run.id,
-            "next_agent": "risk-analysis",
+            "agent_trace": workflow["agent_trace"],
+            "risk_analysis": workflow["risk_analysis"],
             "spelling_corrections": spelling_corrections,
         },
     )
@@ -316,13 +313,11 @@ def _domain_guard_response(assessment: DomainAssessment) -> tuple[str, list[dict
     )
 
 
-def _retrieval_success_message(spelling_corrections: list[dict[str, str]]) -> str:
-    """Tell the user when a finance-specific typo was corrected for retrieval."""
+def _workflow_success_message(workflow: dict[str, Any], spelling_corrections: list[dict[str, str]]) -> str:
+    """Return Mahee's final analysis, noting any transparent query correction."""
 
+    response = str(workflow["final_response"])
     if not spelling_corrections:
-        return "I found source-backed financial evidence. The Risk Analysis Agent can now assess possible risks using these sources."
+        return response
     changes = ", ".join(f"{item['from']} -> {item['to']}" for item in spelling_corrections)
-    return (
-        f"I searched using the likely finance correction: {changes}. "
-        "I found source-backed financial evidence. The Risk Analysis Agent can now assess possible risks using these sources."
-    )
+    return f"I searched using the likely finance correction: {changes}.\n\n{response}"
