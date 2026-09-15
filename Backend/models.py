@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -28,6 +29,73 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     email: Mapped[str | None] = mapped_column(String(254), unique=True, index=True, nullable=True)
     role: Mapped[str] = mapped_column(String(30), default="user", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Plan(Base):
+    """One selectable FinAssist subscription plan."""
+
+    __tablename__ = "plans"
+    __table_args__ = (
+        CheckConstraint("price_lkr >= 0", name="ck_plans_price_lkr_nonnegative"),
+        CheckConstraint("monthly_analysis_limit >= 0", name="ck_plans_monthly_analysis_limit_nonnegative"),
+    )
+
+    code: Mapped[str] = mapped_column(String(30), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    price_lkr: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    monthly_analysis_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class Subscription(Base):
+    """A user's current subscription and billing-period state."""
+
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'cancelled', 'expired')",
+            name="ck_subscriptions_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    plan_code: Mapped[str] = mapped_column(String(30), ForeignKey("plans.code"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scheduled_plan_code: Mapped[str | None] = mapped_column(
+        String(30), ForeignKey("plans.code", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AnalysisUsageEvent(Base):
+    """One reserved, completed, or released analysis allowance event."""
+
+    __tablename__ = "analysis_usage_events"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('reserved', 'completed', 'released')",
+            name="ck_analysis_usage_events_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    subscription_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("subscriptions.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    message_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("messages.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="reserved", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

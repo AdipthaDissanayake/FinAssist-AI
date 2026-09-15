@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -22,7 +22,20 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from .database import get_database_session, initialise_database
-from .models import Chat, Message, RetrievalEvidence, RetrievalRun
+from .models import AnalysisUsageEvent, Chat, Message, Plan, RetrievalEvidence, RetrievalRun
+from .subscription_routes import get_verified_user_id, router as subscription_router
+from .subscription_service import (
+    MonthlyAnalysisLimitReachedError,
+    PlanNotAvailableError,
+    SubscriptionServiceError,
+    can_perform_analysis,
+    complete_reserved_analysis,
+    get_active_subscription,
+    get_current_period_usage,
+    get_remaining_monthly_analyses,
+    release_reserved_analysis,
+    reserve_analysis,
+)
 from IR_NLP_Agent.NLP.N1 import DomainAssessment, FinanceNLP
 from Orchestrator_Agent.O1 import AgentWorkflowError, orchestrate_financial_question
 
@@ -49,6 +62,7 @@ class MessageCreateRequest(BaseModel):
 
 
 app = FastAPI(title="FinAssist AI", version="0.2.0")
+app.include_router(subscription_router)
 if FRONTEND_BUILD_DIRECTORY.is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_BUILD_DIRECTORY / "assets"), name="react-assets")
 
@@ -100,7 +114,10 @@ def list_messages(chat_id: str, database: Session = Depends(get_database_session
 
 @app.post("/api/chats/{chat_id}/messages", status_code=status.HTTP_201_CREATED)
 def add_message(
-    chat_id: str, request: MessageCreateRequest, database: Session = Depends(get_database_session)
+    chat_id: str,
+    request: MessageCreateRequest,
+    database: Session = Depends(get_database_session),
+    user_id: str = Depends(get_verified_user_id),
 ) -> dict[str, Any]:
     """Store a question and run the IR → Risk Analysis agent workflow."""
     chat = _require_chat(database, chat_id)
@@ -145,9 +162,47 @@ def add_message(
         }
 
     try:
+        has_remaining_quota = can_perform_analysis(database, user_id)
+        existing_usage_event = database.scalar(
+            select(AnalysisUsageEvent.id).where(AnalysisUsageEvent.message_id == user_message.id)
+        )
+        if not has_remaining_quota and existing_usage_event is None:
+            database.commit()
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content=_subscription_limit_response(database, user_id),
+            )
+        try:
+            # Reservation remains authoritative even after a negative pre-check:
+            # an existing message ID may be safely retried without consuming a
+            # second allowance.
+            reserve_analysis(database, user_id, user_message.id)
+        except MonthlyAnalysisLimitReachedError:
+            database.commit()
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content=_subscription_limit_response(database, user_id),
+            )
+        # Persist the reservation before any Tavily, Gemini, or agent work.
+        database.commit()
+    except PlanNotAvailableError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Subscription plans are temporarily unavailable.",
+        ) from exc
+    except SubscriptionServiceError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The subscription service is temporarily unavailable.",
+        ) from exc
+
+    try:
         workflow = orchestrate_financial_question(corrected_query, top_k=request.top_k)
         retrieval = workflow["retrieval"]
     except AgentWorkflowError as exc:
+        release_reserved_analysis(database, user_id, user_message.id)
         failure = RetrievalRun(
             message_id=user_message.id,
             status="failed",
@@ -168,6 +223,14 @@ def add_message(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="The source-backed risk analysis is temporarily unavailable. Please try again shortly.",
         ) from exc
+    except Exception:
+        # The reservation was committed before external work.  Release it even
+        # for an unexpected orchestration failure so it does not consume quota.
+        release_reserved_analysis(database, user_id, user_message.id)
+        database.commit()
+        raise
+
+    complete_reserved_analysis(database, user_id, user_message.id)
 
     retrieval_run = RetrievalRun(
         message_id=user_message.id,
@@ -275,6 +338,33 @@ def _retrieval_payload(database: Session, retrieval_run: RetrievalRun) -> dict[s
 
 def _clean_title(value: str | None, limit: int = 160) -> str:
     return " ".join((value or "").split())[:limit].rstrip()
+
+
+def _subscription_limit_response(database: Session, user_id: str) -> dict[str, Any]:
+    """Build the quota response from the persisted subscription plan state."""
+
+    subscription = get_active_subscription(database, user_id)
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The active subscription could not be resolved.",
+        )
+    plan = database.get(Plan, subscription.plan_code)
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The active subscription plan could not be resolved.",
+        )
+    used = get_current_period_usage(database, user_id)
+    remaining = get_remaining_monthly_analyses(database, user_id)
+    return {
+        "error": "subscription_limit_reached",
+        "message": "Monthly analysis limit reached.",
+        "plan": plan.code,
+        "used": used,
+        "limit": plan.monthly_analysis_limit,
+        "remaining": remaining,
+    }
 
 
 def _domain_guard_response(assessment: DomainAssessment) -> tuple[str, list[dict[str, str]]]:
