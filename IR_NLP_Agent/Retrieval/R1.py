@@ -10,6 +10,8 @@ from collections import Counter
 from typing import Any, Sequence
 from urllib.parse import urlparse
 
+from requests.exceptions import RequestException
+
 try:
     from ..NLP.N1 import FinanceNLP
 except ImportError:  # Supports running main.py directly from IR_NLP_Agent.
@@ -281,18 +283,29 @@ class TavilyRetriever:
         key = api_key or os.getenv("TAVILY_API_KEY")
         if not key:
             raise RuntimeError("Tavily mode needs TAVILY_API_KEY in your environment; do not hard-code it in source code.")
-        return TavilyClient(api_key=key)
+        client = TavilyClient(api_key=key)
+        # Some local development environments set HTTP(S)_PROXY to a stale
+        # loopback address. It makes all Tavily calls fail before they leave
+        # the machine. Direct HTTPS is the safe local default; deployments
+        # that deliberately use a managed proxy can opt back in explicitly.
+        client.session.trust_env = _environment_flag("TAVILY_USE_SYSTEM_PROXY", default=False)
+        return client
 
     def search(self, query: str, top_k: int = 5) -> dict[str, Any]:
         _validate_query(query, top_k)
         processed_query = self.nlp.preprocess_query(query) or query
-        response = self._client.search(
-            query=_tavily_finance_query(query),
-            search_depth=os.getenv("TAVILY_SEARCH_DEPTH", "basic"),
-            max_results=top_k,
-            include_domains=self.include_domains,
-            include_answer=False,
-        )
+        try:
+            response = self._client.search(
+                query=_tavily_finance_query(query),
+                search_depth=os.getenv("TAVILY_SEARCH_DEPTH", "basic"),
+                max_results=top_k,
+                include_domains=self.include_domains,
+                include_answer=False,
+            )
+        except RequestException as exc:
+            raise RuntimeError(
+                "Financial-source retrieval is temporarily unavailable. Check your internet connection or proxy settings, then try again."
+            ) from exc
         evidence = []
         for result in response.get("results", [])[:top_k]:
             snippet = (result.get("content") or result.get("raw_content") or "").strip()
@@ -324,6 +337,15 @@ def _validate_query(query: str, top_k: int) -> None:
         raise ValueError("query must not be longer than 1000 characters")
     if not isinstance(top_k, int) or not 1 <= top_k <= 10:
         raise ValueError("top_k must be an integer from 1 to 10")
+
+
+def _environment_flag(name: str, default: bool = False) -> bool:
+    """Read a simple boolean environment setting without accepting ambiguity."""
+
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 TOKEN_PATTERN = re.compile(r"[a-zA-Z][a-zA-Z-]{1,}")

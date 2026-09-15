@@ -6,6 +6,14 @@ Multi-agent AI system for financial information retrieval and risk analysis usin
 
 Adi's module is available in [`IR_NLP_Agent/README.md`](IR_NLP_Agent/README.md). It identifies finance entities, then uses Tavily to retrieve current source-linked evidence from trusted financial domains. Gemini is reserved for the Risk Agent's evidence-grounded reasoning. Local document retrieval remains an optional fallback.
 
+## Risk Analysis Agent
+
+Mahee's evidence-grounded Gemini Risk Analysis Agent is documented in [`Risk_Agent/README.md`](Risk_Agent/README.md). It accepts the IR Agent's source-linked evidence through a JSON/HTTP contract and returns only evidence-cited financial-risk explanations with an educational disclaimer.
+
+## Orchestrator Agent
+
+The IR → Risk Analysis workflow is implemented in [`Orchestrator_Agent/README.md`](Orchestrator_Agent/README.md). The shared backend now calls it for each permitted financial question, returning Mahee's final source-grounded risk analysis and an auditable agent trace.
+
 ## Run the shared chat interface
 
 With the virtual environment activated, install the required packages and set the Tavily key privately:

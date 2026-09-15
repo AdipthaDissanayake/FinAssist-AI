@@ -1,0 +1,10 @@
+flowchart TD
+    Q[Question + evidence] --> IV[Input validation]
+    IV --> GP[Grounded prompt\nEvidence marked untrusted data]
+    GP --> G[Gemini]
+    G --> RAW[Raw structured response]
+    RAW --> SV[Schema / JSON validation]
+    SV --> RV[Risk category and level validation]
+    RV --> EV[Evidence ID and safety validation]
+    EV --> OUT[Validated risk analysis\nsummary + citations + risks + disclaimer]
+    OUT --> ORCH[Orchestrator]
