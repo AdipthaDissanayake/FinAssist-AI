@@ -30,7 +30,14 @@ def fake_risk_analysis(query, evidence):
                 "level_reason": "The evidence describes a rate increase without a precise severity.",
                 "explanation": "Borrowing costs may increase.",
                 "evidence_ids": ["ev-1"],
-            }
+            },
+            {
+                "name": "Repayment risk",
+                "level": "High",
+                "level_reason": "The evidence describes higher costs without a precise severity.",
+                "explanation": "Higher payments may make repayment more difficult.",
+                "evidence_ids": ["ev-1"],
+            },
         ],
         "disclaimer": "Educational information only.",
         "sources": [{"id": "ev-1", "source": "Test regulator", "url": "https://example.org/loan"}],
@@ -43,6 +50,13 @@ def test_orchestrator_preserves_evidence_and_returns_trace():
         "What are the risks of a variable-rate loan?", retrieve=fake_retrieval, analyse=fake_risk_analysis
     )
     assert result["risk_analysis"]["risks"][0]["evidence_ids"] == ["ev-1"]
+    assert len(result["risk_analysis"]["risks"]) == 2
+    assert result["risk_analysis"]["summary"]
+    assert result["risk_analysis"]["risks"][1]["level"] == "High"
+    assert result["risk_analysis"]["risks"][1]["explanation"]
+    assert result["risk_analysis"]["risks"][1]["evidence_ids"] == ["ev-1"]
+    assert result["risk_analysis"]["sources"][0]["source"] == "Test regulator"
+    assert result["risk_analysis"]["disclaimer"]
     assert [step["agent"] for step in result["agent_trace"]] == ["information-retrieval", "risk-analysis"]
     assert "Interest-rate risk" in result["final_response"]
     assert "Level rationale" in result["final_response"]
