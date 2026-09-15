@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { ApiError, api } from "./api";
+import SubscriptionPage from "./SubscriptionPage";
 import "./styles.css";
 
 const suggestions = [
@@ -9,30 +11,16 @@ const suggestions = [
   { label: "Financial risks of betting", question: "What are the financial risks associated with betting?" },
 ];
 
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const rawBody = await response.text();
-  let payload = null;
-  try { payload = rawBody ? JSON.parse(rawBody) : null; }
-  catch {
-    if (!response.ok) throw new Error(`The server returned an error (${response.status}). Please try again shortly.`);
-    throw new Error("The server returned an unexpected response. Please refresh and try again.");
-  }
-  if (!response.ok) throw new Error(typeof payload?.detail === "string" ? payload.detail : "Request failed. Please try again.");
-  return payload;
-}
-
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem("finassist-theme") || "dark");
+  const [activeView, setActiveView] = useState(currentViewFromHash);
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
+  const [quotaLimitReached, setQuotaLimitReached] = useState(false);
   const inputRef = useRef(null);
   const messageEndRef = useRef(null);
 
@@ -42,6 +30,11 @@ function App() {
   }, [theme]);
   useEffect(() => { loadChats(); }, []);
   useEffect(() => { messageEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isSending]);
+  useEffect(() => {
+    const updateView = () => setActiveView(currentViewFromHash());
+    window.addEventListener("hashchange", updateView);
+    return () => window.removeEventListener("hashchange", updateView);
+  }, []);
 
   async function loadChats() {
     try { setChats(await api("/api/chats")); } catch (requestError) { setError(requestError.message); }
@@ -55,6 +48,7 @@ function App() {
     } catch (requestError) { setError(requestError.message); }
   }
   function startNewChat() {
+    navigateTo("chat");
     setActiveChatId(null);
     setMessages([]);
     setError("");
@@ -63,6 +57,11 @@ function App() {
   function useSuggestion(question) {
     setDraft(question);
     inputRef.current?.focus();
+  }
+  function navigateTo(view) {
+    const hash = view === "subscription" ? "#/subscription" : "#/";
+    if (window.location.hash === hash) setActiveView(view);
+    else window.location.hash = hash;
   }
   async function sendQuestion(question = draft) {
     const content = question.trim();
@@ -83,7 +82,14 @@ function App() {
       setMessages((current) => [...current, result.user_message, result.assistant_message]);
       setDraft("");
       await loadChats();
-    } catch (requestError) { setError(requestError.message); }
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 429 && requestError.payload?.error === "subscription_limit_reached") {
+        setQuotaLimitReached(true);
+        navigateTo("subscription");
+      } else {
+        setError(requestError.message);
+      }
+    }
     finally {
       setIsSending(false);
       inputRef.current?.focus();
@@ -94,10 +100,11 @@ function App() {
     <aside className="sidebar" aria-label="Conversation history">
       <button className="brand" type="button" onClick={startNewChat} aria-label="Start a new chat"><span className="brand-mark">F</span><span>FinAssist <b>AI</b></span></button>
       <button className="new-chat-button" type="button" onClick={startNewChat}><Icon name="plus" /> New chat</button>
+      <button className={`sidebar-nav-button ${activeView === "subscription" ? "active" : ""}`} type="button" onClick={() => navigateTo("subscription")}><Icon name="card" /> Subscription</button>
       <p className="sidebar-heading">Conversations</p>
       <nav className="chat-list" aria-label="Saved conversations">
         {chats.length === 0 && <p className="empty-state">Your saved research will appear here.</p>}
-        {chats.map((chat) => <button className={`chat-item ${chat.id === activeChatId ? "active" : ""}`} key={chat.id} type="button" onClick={() => openChat(chat.id)}>
+        {chats.map((chat) => <button className={`chat-item ${activeView === "chat" && chat.id === activeChatId ? "active" : ""}`} key={chat.id} type="button" onClick={() => { navigateTo("chat"); openChat(chat.id); }}>
           <span className="chat-item-title">{chat.title}</span><span className="chat-item-preview">{chat.preview || "No messages yet"}</span>
         </button>)}
       </nav>
@@ -106,13 +113,14 @@ function App() {
 
     <section className="conversation-panel">
       <header className="topbar">
-        <div><h1>FinAssist AI</h1><p>Source-backed financial research</p></div>
+        <div><h1>FinAssist AI</h1><p>{activeView === "subscription" ? "Subscription and monthly usage" : "Source-backed financial research"}</p></div>
         <div className="top-actions">
           <span className="source-status"><span className="status-dot" /> Trusted sources</span>
           <button className="theme-toggle" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle colour theme"><Icon name={theme === "dark" ? "sun" : "moon"} /> {theme === "dark" ? "Light" : "Dark"}</button>
         </div>
       </header>
 
+      {activeView === "subscription" ? <SubscriptionPage quotaLimitReached={quotaLimitReached} onDismissQuotaLimit={() => setQuotaLimitReached(false)} /> : <>
       <section className="message-view" aria-live="polite">
         {error && <div className="error-notice" role="alert"><Icon name="warning" />{error}</div>}
         {messages.length === 0 ? <Welcome onSuggestion={useSuggestion} inputRef={inputRef} /> : messages.map((message) => <MessageCard key={message.id} message={message} onSuggestion={useSuggestion} />)}
@@ -128,6 +136,7 @@ function App() {
         </form>
         <p className="disclaimer">Educational information only — not personalised financial, investment, legal, or gambling advice.</p>
       </div>
+      </>}
     </section>
   </main>;
 }
@@ -225,9 +234,14 @@ function Icon({ name }) {
     send: <><path d="m21 3-7.5 18-3.4-7.1L3 10.5 21 3Z" /><path d="m10.1 13.9 4.5-4.5" /></>,
     arrow: <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
     sources: <><rect x="4" y="5" width="11" height="14" rx="1" /><path d="M8 9h4M8 12h4M8 15h3" /><path d="M15 8h5v11H9" /></>,
+    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></>,
     external: <><path d="M14 5h5v5M19 5l-8 8" /><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5" /></>,
   };
   return <svg className={`icon icon-${name}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+}
+
+function currentViewFromHash() {
+  return window.location.hash === "#/subscription" ? "subscription" : "chat";
 }
 
 createRoot(document.getElementById("root")).render(<App />);
