@@ -22,6 +22,7 @@ from typing import Any, Protocol
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -298,6 +299,25 @@ def analyze_financial_risks(
 
 
 app = FastAPI(title="FinAssist Risk Analysis Agent", version="1.0.0")
+
+# The independently deployed demo UI calls this service from the local Vite or
+# shared frontend origin. This is deliberately an explicit origin list, not a
+# credentialed or wildcard CORS policy; the Risk Agent still owns validation.
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "RISK_AGENT_ALLOWED_ORIGINS",
+        "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.get("/health")

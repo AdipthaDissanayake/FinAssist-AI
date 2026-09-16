@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -111,6 +112,20 @@ def test_missing_risk_fields_are_removed_safely():
     )
     result = analyze_financial_risks("What are loan risks?", DEMO_EVIDENCE[:1], client=StaticClient(response))
     assert result["risks"] == []
+
+
+class RiskAgentUnitTests(unittest.TestCase):
+    def test_analysis_keeps_only_evidence_cited_risks(self) -> None:
+        test_analysis_keeps_only_evidence_cited_risks()
+
+    def test_low_and_high_levels_are_accepted(self) -> None:
+        test_low_and_high_levels_are_accepted()
+
+    def test_missing_optional_evidence_id_uses_a_deterministic_position_id(self) -> None:
+        test_missing_optional_evidence_id_uses_a_deterministic_position_id()
+
+    def test_missing_risk_fields_are_removed_safely(self) -> None:
+        test_missing_risk_fields_are_removed_safely()
 
 
 def run_offline_tests() -> None:
