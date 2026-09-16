@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ApiError, api } from "./api";
 import SubscriptionPage from "./SubscriptionPage";
+import RiskEvaluationPage from "./RiskEvaluationPage";
 import "./styles.css";
 
 const suggestions = [
@@ -70,7 +71,7 @@ function App() {
     inputRef.current?.focus();
   }
   function navigateTo(view) {
-    const hash = view === "subscription" ? "#/subscription" : "#/";
+    const hash = view === "subscription" ? "#/subscription" : view === "risk-evaluation" ? "#/risk-evaluation" : "#/";
     if (window.location.hash === hash) setActiveView(view);
     else window.location.hash = hash;
   }
@@ -112,6 +113,7 @@ function App() {
       <button className="brand" type="button" onClick={startNewChat} aria-label="Start a new chat"><span className="brand-mark">F</span><span>FinAssist <b>AI</b></span></button>
       <button className="new-chat-button" type="button" onClick={startNewChat}><Icon name="plus" /> New chat</button>
       <button className={`sidebar-nav-button ${activeView === "subscription" ? "active" : ""}`} type="button" onClick={() => navigateTo("subscription")}><Icon name="card" /> Subscription</button>
+      <button className={`sidebar-nav-button ${activeView === "risk-evaluation" ? "active" : ""}`} type="button" onClick={() => navigateTo("risk-evaluation")}><Icon name="flask" /> Risk evaluation</button>
       <p className="sidebar-heading">Conversations</p>
       <nav className="chat-list" aria-label="Saved conversations">
         {chats.length === 0 && <p className="empty-state">Your saved research will appear here.</p>}
@@ -129,14 +131,14 @@ function App() {
 
     <section className="conversation-panel">
       <header className="topbar">
-        <div><h1>FinAssist AI</h1><p>{activeView === "subscription" ? "Subscription and monthly usage" : "Source-backed financial research"}</p></div>
+        <div><h1>FinAssist AI</h1><p>{activeView === "subscription" ? "Subscription and monthly usage" : activeView === "risk-evaluation" ? "Evidence-grounded risk analysis evaluation" : "Source-backed financial research"}</p></div>
         <div className="top-actions">
           <span className="source-status"><span className="status-dot" /> Trusted sources</span>
           <button className="theme-toggle" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle colour theme"><Icon name={theme === "dark" ? "sun" : "moon"} /> {theme === "dark" ? "Light" : "Dark"}</button>
         </div>
       </header>
 
-      {activeView === "subscription" ? <SubscriptionPage quotaLimitReached={quotaLimitReached} onDismissQuotaLimit={() => setQuotaLimitReached(false)} /> : <>
+      {activeView === "subscription" ? <SubscriptionPage quotaLimitReached={quotaLimitReached} onDismissQuotaLimit={() => setQuotaLimitReached(false)} /> : activeView === "risk-evaluation" ? <RiskEvaluationPage /> : <>
       <section className="message-view" aria-live="polite">
         {error && <div className="error-notice" role="alert"><Icon name="warning" />{error}</div>}
         {messages.length === 0 ? <Welcome onSuggestion={useSuggestion} inputRef={inputRef} /> : messages.map((message) => <MessageCard key={message.id} message={message} onSuggestion={useSuggestion} />)}
@@ -252,13 +254,16 @@ function Icon({ name }) {
     sources: <><rect x="4" y="5" width="11" height="14" rx="1" /><path d="M8 9h4M8 12h4M8 15h3" /><path d="M15 8h5v11H9" /></>,
     card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></>,
     external: <><path d="M14 5h5v5M19 5l-8 8" /><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5" /></>,
+    flask: <><path d="M9 3h6M10 3v6l-5 8.5A2.3 2.3 0 0 0 7 21h10a2.3 2.3 0 0 0 2-3.5L14 9V3" /><path d="M8.2 15h7.6" /></>,
     trash: <><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" /></>,
   };
   return <svg className={`icon icon-${name}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
 function currentViewFromHash() {
-  return window.location.hash === "#/subscription" ? "subscription" : "chat";
+  if (window.location.hash === "#/subscription") return "subscription";
+  if (window.location.hash === "#/risk-evaluation") return "risk-evaluation";
+  return "chat";
 }
 
 createRoot(document.getElementById("root")).render(<App />);

@@ -37,3 +37,11 @@ export async function api(path, options = {}) {
   }
   return payload;
 }
+
+// The Risk Agent is independently deployed on port 8001. Its URL can be
+// changed at build time without placing any secret in the frontend bundle.
+const RISK_AGENT_URL = (import.meta.env.VITE_RISK_AGENT_URL || "http://127.0.0.1:8001").replace(/\/$/, "");
+
+export async function riskAgentApi(path, options = {}) {
+  return api(`${RISK_AGENT_URL}${path}`, options);
+}
