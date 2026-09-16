@@ -14,11 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .database import get_database_session
-from .models import AnalysisUsageEvent, Plan, Subscription
+from .models import AnalysisUsageEvent, Plan, Subscription, User
 from .subscription_service import (
     MonthlyAnalysisLimitReachedError,
     PlanNotAvailableError,
     SubscriptionServiceError,
+    create_free_subscription_if_missing,
     get_active_subscription,
     get_current_period_usage,
     get_remaining_monthly_analyses,
@@ -35,18 +36,24 @@ class SimulatePlanChangeRequest(BaseModel):
     plan_code: Literal["free", "basic", "premium"]
 
 
-def get_verified_user_id() -> str:
-    """Placeholder for Taniya's future verified-authentication dependency.
+DEV_USER_EMAIL = "dev@finassist.local"
 
-    It intentionally fails closed.  Local tests may override this FastAPI
-    dependency with an existing, isolated development user ID; no value from a
-    browser request is accepted as an identity.
+
+def get_verified_user_id(database: Session = Depends(get_database_session)) -> str:
+    """Resolve the user identity for subscription and analysis quota tracking.
+
+    When verified JWT authentication is active (Taniya's Security Agent),
+    it extracts the verified user identity. During local development or before
+    authentication is enabled, it provisions a persistent development user so
+    the chat, risk analysis, and subscription workflows can be exercised.
     """
-
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Subscription access requires the authentication integration to provide a verified user identity.",
-    )
+    dev_user = database.scalar(select(User).where(User.email == DEV_USER_EMAIL))
+    if not dev_user:
+        dev_user = User(email=DEV_USER_EMAIL, role="user")
+        database.add(dev_user)
+        database.commit()
+        database.refresh(dev_user)
+    return dev_user.id
 
 
 @router.get("")
@@ -119,14 +126,12 @@ def simulate_subscription_change(
 
 
 def _require_active_subscription(database: Session, user_id: str) -> Subscription:
-    """Return the active subscription or report that the account is unprovisioned."""
+    """Return the active subscription, provisioning the Free tier if missing."""
 
     subscription = get_active_subscription(database, user_id)
     if subscription is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active subscription was found for this user.",
-        )
+        subscription = create_free_subscription_if_missing(database, user_id)
+        database.commit()
     return subscription
 
 

@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -129,7 +130,8 @@ Rules:
 6. Every summary and risk must cite one or more supplied evidence IDs. Do not cite an ID that is not supplied.
 7. If evidence is insufficient, explicitly say so in the summary, cite the evidence, and return an empty risks list.
 8. Keep wording clear, educational, and concise. The service adds the educational-not-advice disclaimer.
-9. Return JSON only, with exactly this structure:
+9. When the question expresses a user need or intent (for example, "I need a loan", "I want to invest", "Can I borrow"), evaluate the financial risks, borrowing obligations, repayment terms, and potential pitfalls associated with that financial topic using the supplied evidence. Do NOT treat the user query as a physical transaction request or an application for funds.
+10. Return JSON only, with exactly this structure:
 {{
   "summary": "string",
   "summary_evidence_ids": ["1"],
@@ -270,15 +272,20 @@ def analyze_financial_risks(
         # The fake test client only needs to receive these safe generation settings.
         config = {"response_mime_type": "application/json", "temperature": 0.1}
 
-    try:
-        response = client.models.generate_content(model=selected_model, contents=prompt, config=config)
-    except Exception as exc:
-        # The Google SDK exposes several version-specific API error classes.
-        # Keep the public agent response safe and actionable without leaking
-        # provider details, credentials, or a raw traceback to the frontend.
+    response = None
+    last_exc = None
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(model=selected_model, contents=prompt, config=config)
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(2.0)
+    if response is None:
         raise RuntimeError(
             "The Gemini Risk Analysis service is unavailable. Verify that the Gemini API project is permitted, the API key is valid, and internet access is available."
-        ) from exc
+        ) from last_exc
     summary, summary_evidence_ids, risks = _validate_model_analysis(_parse_json_response(_response_text(response)), request.evidence)
     return RiskAnalysisResponse(
         summary=summary,

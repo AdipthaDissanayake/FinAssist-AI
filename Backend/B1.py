@@ -9,12 +9,15 @@ Until then, chats are unowned development records (`user_id` is NULL).
 
 from __future__ import annotations
 
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -110,6 +113,14 @@ def list_messages(chat_id: str, database: Session = Depends(get_database_session
     chat = _require_chat(database, chat_id)
     messages = database.scalars(select(Message).where(Message.chat_id == chat.id).order_by(Message.created_at)).all()
     return {"chat": _chat_payload(database, chat), "messages": [_message_payload(database, message) for message in messages]}
+
+
+@app.delete("/api/chats/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_chat(chat_id: str, database: Session = Depends(get_database_session)) -> Response:
+    chat = _require_chat(database, chat_id)
+    database.delete(chat)
+    database.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/api/chats/{chat_id}/messages", status_code=status.HTTP_201_CREATED)

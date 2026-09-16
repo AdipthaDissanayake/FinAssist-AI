@@ -48,6 +48,17 @@ function App() {
       setMessages(data.messages);
     } catch (requestError) { setError(requestError.message); }
   }
+  async function deleteChat(chatId) {
+    try {
+      setError("");
+      await api(`/api/chats/${chatId}`, { method: "DELETE" });
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+        setMessages([]);
+      }
+      await loadChats();
+    } catch (requestError) { setError(requestError.message); }
+  }
   function startNewChat() {
     navigateTo("chat");
     setActiveChatId(null);
@@ -106,9 +117,14 @@ function App() {
       <p className="sidebar-heading">Conversations</p>
       <nav className="chat-list" aria-label="Saved conversations">
         {chats.length === 0 && <p className="empty-state">Your saved research will appear here.</p>}
-        {chats.map((chat) => <button className={`chat-item ${activeView === "chat" && chat.id === activeChatId ? "active" : ""}`} key={chat.id} type="button" onClick={() => { navigateTo("chat"); openChat(chat.id); }}>
-          <span className="chat-item-title">{chat.title}</span><span className="chat-item-preview">{chat.preview || "No messages yet"}</span>
-        </button>)}
+        {chats.map((chat) => <div className={`chat-item-row ${activeView === "chat" && chat.id === activeChatId ? "active" : ""}`} key={chat.id}>
+          <button className="chat-item" type="button" onClick={() => { navigateTo("chat"); openChat(chat.id); }}>
+            <span className="chat-item-title">{chat.title}</span><span className="chat-item-preview">{chat.preview || "No messages yet"}</span>
+          </button>
+          <button className="chat-delete-button" type="button" title="Delete conversation" aria-label={`Delete ${chat.title}`} onClick={(e) => { e.stopPropagation(); deleteChat(chat.id); }}>
+            <Icon name="trash" />
+          </button>
+        </div>)}
       </nav>
       <div className="sidebar-footer"><span className="status-dot" /> History saved · sign-in pending</div>
     </aside>
@@ -239,6 +255,7 @@ function Icon({ name }) {
     card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></>,
     external: <><path d="M14 5h5v5M19 5l-8 8" /><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5" /></>,
     flask: <><path d="M9 3h6M10 3v6l-5 8.5A2.3 2.3 0 0 0 7 21h10a2.3 2.3 0 0 0 2-3.5L14 9V3" /><path d="M8.2 15h7.6" /></>,
+    trash: <><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" /></>,
   };
   return <svg className={`icon icon-${name}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
