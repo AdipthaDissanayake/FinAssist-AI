@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant U as User
+    participant O as Orchestrator
+    participant IR as Information Retrieval Agent
+    participant R as Risk Analysis Agent
+    participant G as Gemini
+
+    U->>O: Financial question
+    O->>IR: retrieve(query, top_k)
+    IR-->>O: Retrieved evidence list
+    O->>R: analyze_financial_risks(query, evidence)
+    R->>R: Input validation and grounded prompt
+    R->>G: Structured Gemini request
+    G-->>R: Raw JSON response
+    R->>R: JSON, risk, level, and citation validation
+    R-->>O: Validated risk_analysis
+    O->>O: Add agent_trace and format final_response
+    O-->>U: Source-backed educational response

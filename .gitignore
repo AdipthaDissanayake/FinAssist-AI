@@ -60,6 +60,8 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+Data/chat_history.db
+Data/chat_history.db-journal
 
 # Flask stuff:
 instance/
@@ -156,6 +158,11 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# React / Vite generated files
+Frontend/node_modules/
+Frontend/dist/
+Frontend/vite-build*.log
 
 # Spyder project settings
 .spyderproject
