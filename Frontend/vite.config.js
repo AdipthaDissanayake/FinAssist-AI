@@ -6,8 +6,14 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://127.0.0.1:8000",
-      "/auth": "http://127.0.0.1:8000",
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+      "/auth": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
       "/risk-agent": {
         target: "http://127.0.0.1:8001",
         changeOrigin: true,

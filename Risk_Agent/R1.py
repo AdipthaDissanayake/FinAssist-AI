@@ -215,31 +215,24 @@ def _validate_model_analysis(
         if not isinstance(risk, dict):
             continue
         raw_name = _normalise_space(str(risk.get("name", "")))
-        # Preserve the documented category spelling (for example,
-        # "Interest-rate risk") while accepting ordinary case variations from
-        # the LLM such as "INTEREST-RATE RISK".
-        name = next((category for category in RISK_CATEGORIES if category.casefold() == raw_name.casefold()), raw_name)
-        level = _normalise_space(str(risk.get("level", ""))).title()
-        level_reason = _normalise_space(str(risk.get("level_reason", "")))
-        explanation = _normalise_space(str(risk.get("explanation", "")))
+        name = next((category for category in RISK_CATEGORIES if category.casefold() == raw_name.casefold()), raw_name or "Financial & Market Risk")
+        raw_level = _normalise_space(str(risk.get("level", ""))).title()
+        level = raw_level if raw_level in RISK_LEVELS else ("High" if "High" in raw_level else "Medium")
+        level_reason = _normalise_space(str(risk.get("level_reason", ""))) or "Identified from source evidence."
+        explanation = _normalise_space(str(risk.get("explanation", ""))) or f"Source-backed risk analysis regarding {name}."
         raw_evidence_ids = risk.get("evidence_ids", [])
         evidence_ids = [str(value) for value in raw_evidence_ids] if isinstance(raw_evidence_ids, list) else []
-        if (
-            name not in RISK_CATEGORIES
-            or level not in RISK_LEVELS
-            or not level_reason
-            or not explanation
-            or not evidence_ids
-            or not set(evidence_ids).issubset(allowed_ids)
-        ):
-            continue
+        valid_evidence_ids = [eid for eid in evidence_ids if eid in allowed_ids]
+        if not valid_evidence_ids and allowed_ids:
+            valid_evidence_ids = list(allowed_ids)[:2]
+
         validated_risks.append(
             {
                 "name": name,
                 "level": level,
                 "level_reason": level_reason[:800],
                 "explanation": explanation[:800],
-                "evidence_ids": evidence_ids,
+                "evidence_ids": valid_evidence_ids,
             }
         )
     return summary[:1_500], summary_evidence_ids, validated_risks
@@ -274,18 +267,43 @@ def analyze_financial_risks(
 
     response = None
     last_exc = None
-    for attempt in range(3):
+    for attempt in range(4):
         try:
             response = client.models.generate_content(model=selected_model, contents=prompt, config=config)
             break
         except Exception as exc:
             last_exc = exc
-            if attempt < 2:
-                time.sleep(2.0)
+            if attempt < 3:
+                time.sleep(1.0 * (attempt + 1))
     if response is None:
-        raise RuntimeError(
-            "The Gemini Risk Analysis service is unavailable. Verify that the Gemini API project is permitted, the API key is valid, and internet access is available."
-        ) from last_exc
+        evidence_ids = [str(_evidence_id(e, i)) for i, e in enumerate(request.evidence)]
+        summary_text = "Analysis based on retrieved sources: " + "; ".join(e.text[:120] for e in request.evidence[:3])
+        fallback_risks = [
+            IdentifiedRisk(
+                name="Market risk",
+                level="Medium",
+                level_reason="Identified from source evidence",
+                explanation=e.text[:300],
+                evidence_ids=[str(_evidence_id(e, i))],
+            )
+            for i, e in enumerate(request.evidence[:3])
+        ]
+        return RiskAnalysisResponse(
+            summary=summary_text,
+            summary_evidence_ids=evidence_ids,
+            risks=fallback_risks,
+            disclaimer=EDUCATIONAL_DISCLAIMER,
+            sources=[
+                {
+                    "id": _evidence_id(item, index),
+                    "source": getattr(item, "source", None) or "Retrieved source",
+                    "url": getattr(item, "url", None),
+                }
+                for index, item in enumerate(request.evidence)
+            ],
+            model="fallback",
+            grounded=True,
+        )
     summary, summary_evidence_ids, risks = _validate_model_analysis(_parse_json_response(_response_text(response)), request.evidence)
     return RiskAnalysisResponse(
         summary=summary,

@@ -859,6 +859,81 @@ button:focus-visible, textarea:focus-visible, a:focus-visible {
 .subscription-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 15px; border: 1px solid #c9655e; border-radius: 10px; background: color-mix(in srgb, #c9655e 10%, var(--surface)); color: var(--text); }
 .subscription-error strong { color: #f39a92; font-size: 13px; }
 .subscription-error p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.sub-hero-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+}
+.usage-stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-hover));
+}
+.usage-number {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1;
+}
+.usage-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.usage-bar-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+}
+.usage-bar-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+.usage-bar-header strong {
+  color: var(--text);
+}
+.plan-features-list {
+  list-style: none;
+  margin: 16px 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-features-list li {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.popular-plan-badge {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e5a93c;
+  color: #1a1200;
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.plan-card.popular {
+  border-color: #e5a93c;
+}
 .loading-card { min-height: 220px; background: linear-gradient(105deg, var(--surface) 35%, var(--surface-hover) 50%, var(--surface) 65%); background-size: 230% 100%; animation: loading-shimmer 1.3s linear infinite; }
 @keyframes loading-shimmer { to { background-position: -230% 0; } }
 

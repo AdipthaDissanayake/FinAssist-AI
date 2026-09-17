@@ -54,14 +54,23 @@ def register(user_data: UserRegisterRequest, db: Session = Depends(get_database_
             detail="Email already registered",
         )
 
-    new_user = User(
-        email=user_data.email,
-        password_hash=hash_password(user_data.password),
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+    try:
+        new_user = User(
+            email=user_data.email,
+            password_hash=hash_password(user_data.password),
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration failed. Email may already be registered.",
+        )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -83,9 +92,7 @@ def google_client_id() -> dict[str, str]:
 
     A Google OAuth client ID is public configuration, unlike a client secret.
     """
-    client_id = os.getenv("GOOGLE_CLIENT_ID")
-    if not client_id:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured")
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
     return {"client_id": client_id}
 
 

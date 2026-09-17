@@ -40,7 +40,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     async function initialiseGoogleSignIn() {
       try {
         const [clientId] = await Promise.all([getGoogleClientId(), loadGoogleIdentityServices()]);
-        if (cancelled || !googleButtonRef.current) return;
+        if (cancelled || !googleButtonRef.current || !clientId) return;
 
         window.google.accounts.id.initialize({
           client_id: clientId,
