@@ -56,13 +56,17 @@ def initialise_database() -> None:
 def _add_google_identity_column() -> None:
     """Apply the small backwards-compatible migration for existing databases."""
     inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
     columns = {column["name"] for column in inspector.get_columns("users")}
     indexes = {index["name"] for index in inspector.get_indexes("users")}
 
     # This project currently manages its schema with create_all rather than a
     # migration framework. Keep existing email/password rows intact while
-    # adding the optional Google provider identity.
+    # adding the optional Google provider identity and password hash columns.
     with engine.begin() as connection:
+        if "password_hash" not in columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL AFTER email"))
         if "google_sub" not in columns:
             connection.execute(text("ALTER TABLE users ADD COLUMN google_sub VARCHAR(255) NULL"))
         if "ix_users_google_sub" not in indexes:

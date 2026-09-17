@@ -35,11 +35,14 @@ export async function api(path, options = {}) {
   try {
     payload = rawBody ? JSON.parse(rawBody) : null;
   } catch {
-    if (!response.ok)
-      throw new ApiError(
-        `The server returned an error (${response.status}). Please try again shortly.`,
-        response.status,
-      );
+    if (!response.ok) {
+      const cleanText = rawBody ? rawBody.replace(/<[^>]*>/g, "").trim() : "";
+      const message =
+        cleanText && cleanText.length < 200
+          ? cleanText
+          : `The server returned an error (${response.status}). Please try again shortly.`;
+      throw new ApiError(message, response.status);
+    }
     throw new ApiError(
       "The server returned an unexpected response. Please refresh and try again.",
       response.status,
@@ -47,12 +50,18 @@ export async function api(path, options = {}) {
   }
 
   if (!response.ok) {
-    const message =
-      typeof payload?.detail === "string"
-        ? payload.detail
-        : typeof payload?.message === "string"
-          ? payload.message
-          : "Request failed. Please try again.";
+    let message = "Request failed. Please try again.";
+    if (typeof payload?.detail === "string") {
+      message = payload.detail;
+    } else if (Array.isArray(payload?.detail)) {
+      message = payload.detail
+        .map((err) => (typeof err === "string" ? err : err?.msg || err?.detail || JSON.stringify(err)))
+        .join("; ");
+    } else if (typeof payload?.message === "string") {
+      message = payload.message;
+    } else if (typeof payload?.error === "string") {
+      message = payload.error;
+    }
     throw new ApiError(message, response.status, payload);
   }
   return payload;

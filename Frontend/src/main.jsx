@@ -216,14 +216,6 @@ export default function App() {
           <Icon name="card" /> Subscription
         </button>
 
-        <button
-          className={`sidebar-nav-button ${activeView === "risk-evaluation" ? "active" : ""}`}
-          type="button"
-          onClick={() => navigateTo("risk-evaluation")}
-        >
-          <Icon name="flask" /> Risk evaluation
-        </button>
-
         <p className="sidebar-heading">Conversations</p>
 
         <nav className="chat-list" aria-label="Saved conversations">
@@ -280,9 +272,7 @@ export default function App() {
             <p>
               {activeView === "subscription"
                 ? "Subscription and monthly usage"
-                : activeView === "risk-evaluation"
-                  ? "Evidence-grounded risk analysis evaluation"
-                  : "Source-backed financial research"}
+                : "Source-backed financial research"}
             </p>
           </div>
 
@@ -332,8 +322,6 @@ export default function App() {
             quotaLimitReached={quotaLimitReached}
             onDismissQuotaLimit={() => setQuotaLimitReached(false)}
           />
-        ) : activeView === "risk-evaluation" ? (
-          <RiskEvaluationPage />
         ) : (
           <>
             <section className="message-view" aria-live="polite">
@@ -695,11 +683,7 @@ function Icon({ name }) {
 }
 
 function currentViewFromHash() {
-  return window.location.hash === "#/subscription"
-    ? "subscription"
-    : window.location.hash === "#/risk-evaluation"
-      ? "risk-evaluation"
-      : "chat";
+  return window.location.hash === "#/subscription" ? "subscription" : "chat";
 }
 
 createRoot(document.getElementById("root")).render(<App />);

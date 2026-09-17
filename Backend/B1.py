@@ -43,7 +43,7 @@ from IR_NLP_Agent.NLP.N1 import DomainAssessment, FinanceNLP
 from Orchestrator_Agent.O1 import AgentWorkflowError, orchestrate_financial_question
 
 from .auth_routes import router as auth_router
-from .auth import get_current_user
+from .auth import get_current_user, get_current_user_optional
 from .models import User
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -98,8 +98,16 @@ def health(database: Session = Depends(get_database_session)) -> dict[str, str]:
 
 
 @app.get("/api/chats")
-def list_chats(database: Session = Depends(get_database_session)) -> list[dict[str, Any]]:
-    chats = database.scalars(select(Chat).order_by(desc(Chat.updated_at))).all()
+def list_chats(
+    database: Session = Depends(get_database_session),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> list[dict[str, Any]]:
+    if current_user:
+        chats = database.scalars(
+            select(Chat).where(Chat.user_id == current_user.id).order_by(desc(Chat.updated_at))
+        ).all()
+    else:
+        chats = database.scalars(select(Chat).order_by(desc(Chat.updated_at))).all()
     return [_chat_payload(database, chat) for chat in chats]
 
 
@@ -110,6 +118,10 @@ def create_chat(
     current_user: User = Depends(get_current_user)
 ) -> dict[str, Any]:
     chat = Chat(user_id=current_user.id, title=_clean_title(request.title) or "New financial question")
+    database.add(chat)
+    database.commit()
+    database.refresh(chat)
+    return _chat_payload(database, chat)
 
 
 @app.get("/api/chats/{chat_id}/messages")
@@ -234,10 +246,11 @@ def add_message(
         )
         database.add(assistant_message)
         database.commit()
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The source-backed risk analysis is temporarily unavailable. Please try again shortly.",
-        ) from exc
+        database.refresh(assistant_message)
+        return {
+            "user_message": _message_payload(database, user_message),
+            "assistant_message": _message_payload(database, assistant_message),
+        }
     except Exception:
         # The reservation was committed before external work.  Release it even
         # for an unexpected orchestration failure so it does not consume quota.
