@@ -24,6 +24,9 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     email: Mapped[str] = mapped_column(String(254), unique=True, index=True, nullable=False)
+    # The stable Google account identifier.  Email addresses can change, so do
+    # not use them as the provider identity.
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(30), default="user", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
