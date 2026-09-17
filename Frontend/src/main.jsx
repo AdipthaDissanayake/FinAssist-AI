@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ApiError, api } from "./api";
 import SubscriptionPage from "./SubscriptionPage";
-import RiskEvaluationPage from "./RiskEvaluationPage";
+
 import AuthModal from "./AuthModal";
-import { logoutUser } from "./authApi";
+import { getProfile, logoutUser } from "./authApi";
 import "./styles.css";
 
 const suggestions = [
@@ -44,6 +44,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() =>
     Boolean(localStorage.getItem("token")),
   );
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -51,6 +52,27 @@ export default function App() {
   }, [theme]);
   useEffect(() => {
     loadChats();
+  }, [isLoggedIn]);
+  useEffect(() => {
+    let disposed = false;
+    if (!isLoggedIn) {
+      setCurrentUser(null);
+      return undefined;
+    }
+
+    getProfile()
+      .then((profile) => {
+        if (!disposed) setCurrentUser(profile);
+      })
+      .catch(() => {
+        if (!disposed) {
+          logoutUser();
+          setIsLoggedIn(false);
+        }
+      });
+    return () => {
+      disposed = true;
+    };
   }, [isLoggedIn]);
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -94,6 +116,7 @@ export default function App() {
   function handleLogout() {
     logoutUser();
     setIsLoggedIn(false);
+    setCurrentUser(null);
     setChats([]);
     setMessages([]);
     setActiveChatId(null);
@@ -254,13 +277,17 @@ export default function App() {
           </div>
           <div className="top-actions">
             {isLoggedIn ? (
-              <button
-                className="theme-toggle"
-                type="button"
-                onClick={handleLogout}
-              >
-                Log Out
-              </button>
+              <div className="account-actions">
+                <span className="current-user" title={currentUser?.email || "Loading account"}>
+                  <span className="current-user-avatar" aria-hidden="true">
+                    {(currentUser?.email || "U").slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="current-user-email">{currentUser?.email || "Loading..."}</span>
+                </span>
+                <button className="theme-toggle" type="button" onClick={handleLogout}>
+                  Log Out
+                </button>
+              </div>
             ) : (
               <button
                 className="theme-toggle"
@@ -364,6 +391,7 @@ export default function App() {
           </>
         )}
       </section>
+
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
@@ -646,9 +674,11 @@ function Icon({ name }) {
 }
 
 function currentViewFromHash() {
-  if (window.location.hash === "#/subscription") return "subscription";
-  if (window.location.hash === "#/risk-evaluation") return "risk-evaluation";
-  return "chat";
+  return window.location.hash === "#/subscription"
+    ? "subscription"
+    : window.location.hash === "#/risk-evaluation"
+      ? "risk-evaluation"
+      : "chat";
 }
 
 createRoot(document.getElementById("root")).render(<App />);

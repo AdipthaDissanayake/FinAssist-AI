@@ -12,7 +12,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -50,6 +50,23 @@ def initialise_database() -> None:
     from . import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _add_google_identity_column()
+
+
+def _add_google_identity_column() -> None:
+    """Apply the small backwards-compatible migration for existing databases."""
+    inspector = inspect(engine)
+    columns = {column["name"] for column in inspector.get_columns("users")}
+    indexes = {index["name"] for index in inspector.get_indexes("users")}
+
+    # This project currently manages its schema with create_all rather than a
+    # migration framework. Keep existing email/password rows intact while
+    # adding the optional Google provider identity.
+    with engine.begin() as connection:
+        if "google_sub" not in columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN google_sub VARCHAR(255) NULL"))
+        if "ix_users_google_sub" not in indexes:
+            connection.execute(text("CREATE UNIQUE INDEX ix_users_google_sub ON users (google_sub)"))
 
 
 def get_database_session() -> Generator[Session, None, None]:

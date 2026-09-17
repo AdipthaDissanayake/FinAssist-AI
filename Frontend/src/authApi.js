@@ -25,3 +25,19 @@ export async function getProfile() {
 export function logoutUser() {
   localStorage.removeItem("token");
 }
+
+export async function loginWithGoogle(credential) {
+  const data = await api("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential }),
+  });
+  if (data?.access_token) {
+    localStorage.setItem("token", data.access_token);
+  }
+  return data;
+}
+
+export async function getGoogleClientId() {
+  const data = await api("/auth/google/client-id");
+  return data.client_id;
+}
