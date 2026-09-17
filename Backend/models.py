@@ -18,19 +18,15 @@ def new_id() -> str:
 
 
 class User(Base):
-    """Reserved for Taniya's authentication implementation.
-
-    Password hashes and auth-provider details will be added by the Security
-    Agent. This table deliberately stores no plaintext credentials.
-    """
+    """User account table for authentication and identity."""
 
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    email: Mapped[str | None] = mapped_column(String(254), unique=True, index=True, nullable=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(30), default="user", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
 
 class Plan(Base):
     """One selectable FinAssist subscription plan."""

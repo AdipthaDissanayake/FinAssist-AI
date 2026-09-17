@@ -26,6 +26,8 @@ from .subscription_service import (
     simulate_plan_change,
 )
 
+from .auth import get_current_user
+
 
 router = APIRouter(prefix="/api/subscription", tags=["subscription"])
 
@@ -39,21 +41,9 @@ class SimulatePlanChangeRequest(BaseModel):
 DEV_USER_EMAIL = "dev@finassist.local"
 
 
-def get_verified_user_id(database: Session = Depends(get_database_session)) -> str:
-    """Resolve the user identity for subscription and analysis quota tracking.
-
-    When verified JWT authentication is active (Taniya's Security Agent),
-    it extracts the verified user identity. During local development or before
-    authentication is enabled, it provisions a persistent development user so
-    the chat, risk analysis, and subscription workflows can be exercised.
-    """
-    dev_user = database.scalar(select(User).where(User.email == DEV_USER_EMAIL))
-    if not dev_user:
-        dev_user = User(email=DEV_USER_EMAIL, role="user")
-        database.add(dev_user)
-        database.commit()
-        database.refresh(dev_user)
-    return dev_user.id
+def get_verified_user_id(current_user: User = Depends(get_current_user)) -> str:
+    """Resolve the verified user identity from the incoming JWT token."""
+    return current_user.id
 
 
 @router.get("")

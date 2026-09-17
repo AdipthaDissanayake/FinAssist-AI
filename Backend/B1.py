@@ -42,6 +42,9 @@ from .subscription_service import (
 from IR_NLP_Agent.NLP.N1 import DomainAssessment, FinanceNLP
 from Orchestrator_Agent.O1 import AgentWorkflowError, orchestrate_financial_question
 
+from .auth_routes import router as auth_router
+from .auth import get_current_user
+from .models import User
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIRECTORY = PROJECT_ROOT / "Frontend"
@@ -66,6 +69,8 @@ class MessageCreateRequest(BaseModel):
 
 app = FastAPI(title="FinAssist AI", version="0.2.0")
 app.include_router(subscription_router)
+app.include_router(auth_router)
+
 if FRONTEND_BUILD_DIRECTORY.is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_BUILD_DIRECTORY / "assets"), name="react-assets")
 
@@ -99,13 +104,12 @@ def list_chats(database: Session = Depends(get_database_session)) -> list[dict[s
 
 
 @app.post("/api/chats", status_code=status.HTTP_201_CREATED)
-def create_chat(request: ChatCreateRequest, database: Session = Depends(get_database_session)) -> dict[str, Any]:
-    # TODO Taniya: get the ID from verified JWT claims, never from the browser body.
-    chat = Chat(user_id=None, title=_clean_title(request.title) or "New financial question")
-    database.add(chat)
-    database.commit()
-    database.refresh(chat)
-    return _chat_payload(database, chat)
+def create_chat(
+    request: ChatCreateRequest, 
+    database: Session = Depends(get_database_session),
+    current_user: User = Depends(get_current_user)
+) -> dict[str, Any]:
+    chat = Chat(user_id=current_user.id, title=_clean_title(request.title) or "New financial question")
 
 
 @app.get("/api/chats/{chat_id}/messages")
