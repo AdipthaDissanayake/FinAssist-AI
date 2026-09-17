@@ -199,6 +199,7 @@ export default function App() {
             FinAssist <b>AI</b>
           </span>
         </button>
+
         <button
           className="new-chat-button"
           type="button"
@@ -206,6 +207,7 @@ export default function App() {
         >
           <Icon name="plus" /> New chat
         </button>
+
         <button
           className={`sidebar-nav-button ${activeView === "subscription" ? "active" : ""}`}
           type="button"
@@ -213,6 +215,7 @@ export default function App() {
         >
           <Icon name="card" /> Subscription
         </button>
+
         <button
           className={`sidebar-nav-button ${activeView === "risk-evaluation" ? "active" : ""}`}
           type="button"
@@ -220,11 +223,16 @@ export default function App() {
         >
           <Icon name="flask" /> Risk evaluation
         </button>
+
         <p className="sidebar-heading">Conversations</p>
+
         <nav className="chat-list" aria-label="Saved conversations">
           {chats.length === 0 && (
-            <p className="empty-state">Your saved research will appear here.</p>
+            <p className="empty-state">
+              Your saved research will appear here.
+            </p>
           )}
+
           {chats.map((chat) => (
             <div
               className={`chat-item-row ${activeView === "chat" && chat.id === activeChatId ? "active" : ""}`}
@@ -243,6 +251,7 @@ export default function App() {
                   {chat.preview || "No messages yet"}
                 </span>
               </button>
+
               <button
                 className="chat-delete-button"
                 type="button"
@@ -258,6 +267,7 @@ export default function App() {
             </div>
           ))}
         </nav>
+
         <div className="sidebar-footer">
           <span className="status-dot" /> History saved · sign-in pending
         </div>
@@ -270,11 +280,41 @@ export default function App() {
             <p>
               {activeView === "subscription"
                 ? "Subscription and monthly usage"
+                : "Source-backed financial research"}
+            </p>
+          </div>
+
+          <div className="top-actions">
+            <span className="source-status">
+              <span className="status-dot" /> Trusted sources
+            </span>
+
+            <button
+              className="theme-toggle"
+              type="button"
+              onClick={() =>
+                setTheme(theme === "dark" ? "light" : "dark")
+              }
+              aria-label="Toggle colour theme"
+            >
+              <Icon name={theme === "dark" ? "sun" : "moon"} />
+              {theme === "dark" ? "Light" : "Dark"}
+            </button>
+          </div>
+        </header>
+
+        <section className="conversation-panel">
+          <div>
+            <h1>FinAssist AI</h1>
+            <p>
+              {activeView === "subscription"
+                ? "Subscription and monthly usage"
                 : activeView === "risk-evaluation"
                   ? "Evidence-grounded risk analysis evaluation"
                   : "Source-backed financial research"}
             </p>
           </div>
+
           <div className="top-actions">
             {isLoggedIn ? (
               <div className="account-actions">
@@ -297,20 +337,24 @@ export default function App() {
                 Log In
               </button>
             )}
+
             <span className="source-status">
               <span className="status-dot" /> Trusted sources
             </span>
+
             <button
               className="theme-toggle"
               type="button"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              onClick={() =>
+                setTheme(theme === "dark" ? "light" : "dark")
+              }
               aria-label="Toggle colour theme"
             >
               <Icon name={theme === "dark" ? "sun" : "moon"} />{" "}
               {theme === "dark" ? "Light" : "Dark"}
             </button>
           </div>
-        </header>
+        </section>
 
         {activeView === "subscription" ? (
           <SubscriptionPage
@@ -328,6 +372,7 @@ export default function App() {
                   {error}
                 </div>
               )}
+
               {messages.length === 0 ? (
                 <Welcome onSuggestion={useSuggestion} inputRef={inputRef} />
               ) : (
@@ -339,12 +384,14 @@ export default function App() {
                   />
                 ))
               )}
+
               {isSending && (
                 <div className="retrieving">
                   <span className="loading-dot" />
                   <span>Searching trusted financial sources...</span>
                 </div>
               )}
+
               <div ref={messageEndRef} />
             </section>
 
@@ -359,6 +406,7 @@ export default function App() {
                 <label className="sr-only" htmlFor="question-input">
                   Financial question
                 </label>
+
                 <textarea
                   id="question-input"
                   ref={inputRef}
@@ -374,6 +422,7 @@ export default function App() {
                   }}
                   placeholder="Ask about loans, savings, investments, or interest rates..."
                 />
+
                 <button
                   className="send-button"
                   type="submit"
@@ -383,6 +432,7 @@ export default function App() {
                   <Icon name="send" />
                 </button>
               </form>
+
               <p className="disclaimer">
                 Educational information only — not personalised financial,
                 investment, legal, or gambling advice.
@@ -642,7 +692,7 @@ function Icon({ name }) {
     external: (
       <>
         <path d="M14 5h5v5M19 5l-8 8" />
-        <path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5" />
+        <path d="M17 13v5a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V8a2 2 0 0 1 1-1h5" />
       </>
     ),
     flask: (
