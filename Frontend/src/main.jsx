@@ -280,35 +280,6 @@ export default function App() {
             <p>
               {activeView === "subscription"
                 ? "Subscription and monthly usage"
-                : "Source-backed financial research"}
-            </p>
-          </div>
-
-          <div className="top-actions">
-            <span className="source-status">
-              <span className="status-dot" /> Trusted sources
-            </span>
-
-            <button
-              className="theme-toggle"
-              type="button"
-              onClick={() =>
-                setTheme(theme === "dark" ? "light" : "dark")
-              }
-              aria-label="Toggle colour theme"
-            >
-              <Icon name={theme === "dark" ? "sun" : "moon"} />
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
-          </div>
-        </header>
-
-        <section className="conversation-panel">
-          <div>
-            <h1>FinAssist AI</h1>
-            <p>
-              {activeView === "subscription"
-                ? "Subscription and monthly usage"
                 : activeView === "risk-evaluation"
                   ? "Evidence-grounded risk analysis evaluation"
                   : "Source-backed financial research"}
@@ -354,7 +325,7 @@ export default function App() {
               {theme === "dark" ? "Light" : "Dark"}
             </button>
           </div>
-        </section>
+        </header>
 
         {activeView === "subscription" ? (
           <SubscriptionPage
