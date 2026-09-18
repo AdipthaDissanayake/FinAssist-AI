@@ -54,8 +54,8 @@ FRONTEND_BUILD_DIRECTORY = FRONTEND_DIRECTORY / "dist"
 # Load local development credentials before creating the retrieval client.  The
 # root file is preferred; the IR-specific file remains a temporary fallback
 # while the team consolidates configuration.
-load_dotenv(PROJECT_ROOT / ".env")
-load_dotenv(PROJECT_ROOT / "IR_NLP_Agent" / ".env")
+load_dotenv(PROJECT_ROOT / ".env", override=True)
+load_dotenv(PROJECT_ROOT / "IR_NLP_Agent" / ".env", override=True)
 finance_nlp = FinanceNLP()
 
 

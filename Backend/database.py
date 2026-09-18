@@ -18,8 +18,8 @@ from sqlalchemy.pool import StaticPool
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(PROJECT_ROOT / ".env")
-load_dotenv(PROJECT_ROOT / "IR_NLP_Agent" / ".env")
+load_dotenv(PROJECT_ROOT / ".env", override=True)
+load_dotenv(PROJECT_ROOT / "IR_NLP_Agent" / ".env", override=True)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
