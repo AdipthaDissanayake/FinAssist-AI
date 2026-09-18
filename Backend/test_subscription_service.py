@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from Backend import B1
 from Backend.database import Base
-from Backend.models import AnalysisUsageEvent, Chat, Message, Plan, User
+from Backend.models import AnalysisUsageEvent, Chat, Message, PaymentMethod, Plan, User
 from Backend.subscription_service import (
     MonthlyAnalysisLimitReachedError,
     PlanNotAvailableError,
@@ -206,6 +206,155 @@ class SubscriptionServiceTests(unittest.TestCase):
         self.assertEqual(get_current_period_usage(self.database, user.id, now=NOW), 0)
         self.assertEqual(get_remaining_monthly_analyses(self.database, user.id, now=NOW), 5)
 
+    def test_21_card_validation_rejects_invalid_luhn(self) -> None:
+        from Backend.payment_utils import validate_card_details
+        is_valid, err, _, _, _, _ = validate_card_details(
+            card_holder_name="Test User",
+            card_number="4111111111111112",  # invalid checksum
+            exp_month=12,
+            exp_year=2030,
+            cvv="123",
+        )
+        self.assertFalse(is_valid)
+        self.assertIn("checksum", err.lower())
+
+    def test_22_card_validation_accepts_valid_visa_and_detects_brand(self) -> None:
+        from Backend.payment_utils import detect_card_brand, validate_card_details
+        # Standard Visa test card (4242424242424242)
+        is_valid, err, brand, last4, exp_month, exp_year = validate_card_details(
+            card_holder_name="Alice Smith",
+            card_number="4242 4242 4242 4242",
+            exp_month=10,
+            exp_year=2032,
+            cvv="321",
+        )
+        self.assertTrue(is_valid)
+        self.assertEqual(err, "")
+        self.assertEqual(brand, "visa")
+        self.assertEqual(last4, "4242")
+        self.assertEqual(exp_month, 10)
+        self.assertEqual(exp_year, 2032)
+
+    def test_23_card_validation_rejects_past_expiration(self) -> None:
+        from Backend.payment_utils import validate_card_details
+        is_valid, err, _, _, _, _ = validate_card_details(
+            card_holder_name="Alice Smith",
+            card_number="4242424242424242",
+            exp_month=1,
+            exp_year=2020,
+            cvv="321",
+        )
+        self.assertFalse(is_valid)
+        self.assertIn("past", err.lower())
+
+    def test_24_saving_payment_method_for_user(self) -> None:
+        from Backend.models import PaymentMethod
+        user, _ = self._user_and_chat()
+        pm = PaymentMethod(
+            user_id=user.id,
+            card_holder_name="Bob Jones",
+            brand="mastercard",
+            last4="5555",
+            exp_month=8,
+            exp_year=2029,
+            is_default=True,
+        )
+        self.database.add(pm)
+        self.database.commit()
+
+        saved = self.database.scalar(
+            select(PaymentMethod).where(PaymentMethod.user_id == user.id)
+        )
+        self.assertIsNotNone(saved)
+        self.assertEqual(saved.brand, "mastercard")
+        self.assertEqual(saved.last4, "5555")
+        self.assertTrue(saved.is_default)
+
+    def test_25_delete_payment_method_promotes_remaining_to_default(self) -> None:
+        from Backend.models import PaymentMethod
+        user, _ = self._user_and_chat()
+        pm1 = PaymentMethod(
+            user_id=user.id,
+            card_holder_name="Card 1",
+            brand="visa",
+            last4="1111",
+            exp_month=12,
+            exp_year=2029,
+            is_default=True,
+        )
+        pm2 = PaymentMethod(
+            user_id=user.id,
+            card_holder_name="Card 2",
+            brand="mastercard",
+            last4="2222",
+            exp_month=12,
+            exp_year=2029,
+            is_default=False,
+        )
+        self.database.add_all([pm1, pm2])
+        self.database.commit()
+
+        self.database.delete(pm1)
+        # Update remaining to default
+        remaining = self.database.scalar(
+            select(PaymentMethod).where(PaymentMethod.user_id == user.id)
+        )
+        remaining.is_default = True
+        self.database.commit()
+
+        saved = self.database.scalar(
+            select(PaymentMethod).where(PaymentMethod.user_id == user.id)
+        )
+        self.assertEqual(saved.last4, "2222")
+        self.assertTrue(saved.is_default)
+
+    def test_26_add_payment_method_route(self) -> None:
+        from Backend.subscription_routes import AddPaymentMethodRequest, add_payment_method, list_payment_methods
+        user, _ = self._user_and_chat()
+        req = AddPaymentMethodRequest(
+            card_holder_name="Test User",
+            card_number="4242424242424242",
+            exp_month=11,
+            exp_year=2031,
+            cvv="123",
+            is_default=True,
+        )
+        res = add_payment_method(req, user_id=user.id, database=self.database)
+        self.assertEqual(res["message"], "Payment method saved successfully.")
+        self.assertEqual(res["payment_method"]["brand"], "visa")
+        self.assertEqual(res["payment_method"]["last4"], "4242")
+
+        listed = list_payment_methods(user_id=user.id, database=self.database)
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["last4"], "4242")
+
+    def test_27_simulate_change_with_card_details_route(self) -> None:
+        from Backend.subscription_routes import CardDetailsInput, SimulatePlanChangeRequest, simulate_subscription_change
+        seed_default_plans(self.database)
+        user, _ = self._user_and_chat()
+        card_in = CardDetailsInput(
+            card_holder_name="John Doe",
+            card_number="4242424242424242",
+            exp_month=12,
+            exp_year=2032,
+            cvv="456",
+            save_card=True,
+        )
+        req = SimulatePlanChangeRequest(
+            plan_code="basic",
+            card_details=card_in,
+        )
+        res = simulate_subscription_change(req, user_id=user.id, database=self.database)
+        self.assertEqual(res["subscription"]["current_plan"], "basic")
+        self.assertEqual(res["subscription"]["monthly_analysis_limit"], 50)
+
+        # Ensure card was saved to payment_methods
+        saved_cards = self.database.scalars(
+            select(PaymentMethod).where(PaymentMethod.user_id == user.id)
+        ).all()
+        self.assertEqual(len(saved_cards), 1)
+        self.assertEqual(saved_cards[0].last4, "4242")
+
     def _user_and_chat(self) -> tuple[User, Chat]:
         self.user_counter += 1
         user = User(email=f"subscription-test-{self.user_counter}@example.test")
@@ -231,3 +380,4 @@ class SubscriptionServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
