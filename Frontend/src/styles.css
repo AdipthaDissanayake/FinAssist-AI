@@ -739,6 +739,207 @@ button:focus-visible, textarea:focus-visible, a:focus-visible {
   text-align: center;
 }
 
+@media (max-width: 720px) { .app-shell { display: block; }.sidebar { display: none; }.topbar { padding: 11px 16px; }.source-status { display: none; }.theme-toggle { width: 35px; padding: 0; justify-content: center; }.theme-toggle { font-size: 0; }.theme-toggle .icon { width: 16px; }.message-view { padding: 22px 16px; }.welcome-card { margin-top: 3vh; padding: 30px 18px; }.suggestions { grid-template-columns: 1fr; }.composer-area { padding: 0 16px 15px; } }
+
+
+/* =========================================================
+   FINANCIAL DECISION SUPPORT
+   Matches existing FinAssist green / neutral design
+   ========================================================= */
+
+.decision-support {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid #d8e5e1;
+}
+
+.decision-support > .result-heading {
+  margin-bottom: 18px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #007c63;
+}
+
+
+/* Individual risk / consideration card */
+
+.decision-card {
+  position: relative;
+  margin-bottom: 14px;
+  padding: 20px 22px;
+  background: #ffffff;
+  border: 1px solid #d8e5e1;
+  border-radius: 14px;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.decision-card:hover {
+  transform: translateY(-2px);
+  border-color: #9fcfc1;
+  box-shadow: 0 8px 24px rgba(0, 83, 67, 0.08);
+}
+
+.decision-card h3 {
+  margin: 0 0 15px;
+  font-size: 18px;
+  font-weight: 750;
+  color: #102520;
+}
+
+.decision-card p {
+  position: relative;
+  margin: 11px 0;
+  padding-left: 22px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: #3e5851;
+}
+
+
+/* Custom bullet */
+
+.decision-card p::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 800;
+  color: #00866b;
+}
+
+
+/* =========================================================
+   QUESTIONS TO ASK
+   ========================================================= */
+
+.decision-questions {
+  margin-top: 22px;
+  padding: 22px;
+  background: #f3f9f7;
+  border: 1px solid #cfe3dd;
+  border-radius: 14px;
+}
+
+.decision-questions .result-heading {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #007c63;
+}
+
+.decision-questions p:not(.result-heading) {
+  position: relative;
+  margin: 11px 0;
+  padding-left: 25px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #314d46;
+}
+
+.decision-questions p:not(.result-heading)::before {
+  content: "?";
+  position: absolute;
+  left: 0;
+  top: 1px;
+
+  width: 17px;
+  height: 17px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: #d8eee8;
+  color: #007c63;
+
+  font-size: 11px;
+  font-weight: 800;
+}
+
+
+/* =========================================================
+   DECISION SUPPORT DISCLAIMER
+   ========================================================= */
+
+.decision-support .risk-disclaimer {
+  margin-top: 20px;
+  padding: 14px 16px;
+
+  background: #fafcfb;
+  border-left: 3px solid #7fbcae;
+  border-radius: 6px;
+
+  font-size: 12px;
+  line-height: 1.6;
+  color: #647972;
+}
+
+
+/* =========================================================
+   EXISTING RISK CARDS - subtle enhancement
+   ========================================================= */
+
+.risk-card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.risk-card:hover {
+  transform: translateY(-2px);
+  border-color: #a8d2c7;
+  box-shadow: 0 8px 22px rgba(0, 83, 67, 0.07);
+}
+
+
+/* =========================================================
+   EVIDENCE CARDS
+   ========================================================= */
+
+.evidence-card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.evidence-card:hover {
+  transform: translateY(-2px);
+  border-color: #a8d2c7;
+  box-shadow: 0 8px 22px rgba(0, 83, 67, 0.07);
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 768px) {
+  .decision-card,
+  .decision-questions {
+    padding: 17px;
+    border-radius: 12px;
+  }
+
+  .decision-card h3 {
+    font-size: 16px;
+  }
+
+  .decision-card p,
+  .decision-questions p:not(.result-heading) {
+    font-size: 14px;
+  }
+}
 /* Subscription page */
 .subscription-page {
   flex: 1;

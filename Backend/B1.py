@@ -290,6 +290,7 @@ def add_message(
             "retrieval_run_id": retrieval_run.id,
             "agent_trace": workflow["agent_trace"],
             "risk_analysis": workflow["risk_analysis"],
+            "decision_support": workflow.get("decision_support"),
             "spelling_corrections": spelling_corrections,
         },
     )

@@ -444,8 +444,19 @@ function Welcome({ onSuggestion, inputRef }) {
 function MessageCard({ message, onSuggestion }) {
   const retrieval = message.metadata?.retrieval;
   const riskAnalysis = message.metadata?.risk_analysis;
+  const decisionSupport = message.metadata?.decision_support;
   const suggestedQuestions = message.metadata?.suggested_questions;
   const isUser = message.role === "user";
+  return <article className={`message ${isUser ? "user" : "assistant"}`}>
+    <div className="avatar">{isUser ? "You" : "FA"}</div>
+    <div className="message-body">
+      <p className="message-role">{isUser ? "You" : "FinAssist"}</p>
+      {riskAnalysis ? <RiskAnalysisResult analysis={riskAnalysis} /> : <div className="message-text">{message.content}</div>}
+      {decisionSupport && <DecisionSupportResult support={decisionSupport} />}
+      {retrieval?.evidence?.length > 0 && <EvidenceCards evidence={retrieval.evidence} />}
+      {suggestedQuestions?.length > 0 && <SuggestedQuestions questions={suggestedQuestions} onSelect={onSuggestion} />}
+    </div>
+  </article>;
   return (
     <article className={`message ${isUser ? "user" : "assistant"}`}>
       <div className="avatar">{isUser ? "You" : "FA"}</div>
@@ -533,6 +544,39 @@ function RiskAnalysisResult({ analysis }) {
   );
 }
 
+function DecisionSupportResult({ support }) {
+  return (
+    <section className="decision-support">
+      <p className="result-heading">Things to consider</p>
+
+      {support.considerations?.map((item) => (
+        <article className="decision-card" key={item.risk}>
+          <h3>{item.risk}</h3>
+
+          {item.things_to_consider?.map((consideration, index) => (
+  <p key={index}>{consideration}</p>
+))}
+        </article>
+      ))}
+
+      {support.questions_to_consider?.length > 0 && (
+        <div className="decision-questions">
+          <p className="result-heading">Questions to ask before deciding</p>
+
+          {support.questions_to_consider.map((question, index) => (
+            <p key={index}>• {question}</p>
+          ))}
+        </div>
+      )}
+
+      {support.disclaimer && (
+        <p className="risk-disclaimer">
+          {support.disclaimer}
+        </p>
+      )}
+    </section>
+  );
+}
 function SuggestedQuestions({ questions, onSelect }) {
   return (
     <section
@@ -687,3 +731,5 @@ function currentViewFromHash() {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+
+
