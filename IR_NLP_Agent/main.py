@@ -20,6 +20,9 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
 if __package__:
     from .Extraction.E1 import extract_documents
     from .Preprocessing.P1 import chunk_documents, save_chunks
@@ -52,6 +55,12 @@ load_dotenv(PROJECT_ROOT / "IR_NLP_Agent" / ".env")
 DEFAULT_RAW_DIRECTORY = PROJECT_ROOT / "Data" / "Raw"
 DEFAULT_CHUNKS_FILE = PROJECT_ROOT / "Data" / "Processed" / "chunks.json"
 
+
+class RetrievalRequest(BaseModel):
+    query: str = Field(min_length=3, max_length=2000)
+    top_k: int = Field(default=3, ge=1, le=5)
+    engine: str = Field(default="tavily")
+    
 
 def retrieve_financial_evidence(
     query: str,
@@ -87,7 +96,35 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--data-dir", default=str(DEFAULT_RAW_DIRECTORY))
     return parser.parse_args()
 
+app = FastAPI(
+    title="FinAssist Information Retrieval Agent",
+    version="1.0.0"
+)
 
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "agent": "information-retrieval"
+    }
+
+
+@app.post("/retrieve")
+def retrieve(request: RetrievalRequest) -> dict[str, Any]:
+    try:
+        return retrieve_financial_evidence(
+            query=request.query,
+            top_k=request.top_k,
+            engine=request.engine
+        )
+
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The Information Retrieval Agent is temporarily unavailable."
+        ) from exc
+    
 if __name__ == "__main__":
     arguments = _parse_arguments()
     try:
