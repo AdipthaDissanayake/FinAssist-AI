@@ -1,10 +1,19 @@
 import { api } from "./api";
 
-export async function registerUser(email, password) {
-  return await api("/auth/register", {
+export async function registerUser(firstName, lastName, email, password) {
+  const data = await api("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      password,
+    }),
   });
+  if (data?.access_token) {
+    localStorage.setItem("token", data.access_token);
+  }
+  return data;
 }
 
 export async function loginUser(email, password) {

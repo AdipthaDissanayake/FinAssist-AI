@@ -29,9 +29,10 @@ except ImportError:  # The retrieval agent still has a clear error when spaCy is
 
 FINANCE_TERMS: dict[str, tuple[str, ...]] = {
     "LOAN": ("loan", "borrowing", "borrower", "repayment", "installment", "credit", "mortgage", "debt"),
-    "INTEREST_RATE": ("interest rate", "interest", "apr", "rate of return"),
-    "INVESTMENT": ("investment", "invest", "portfolio", "share", "stock", "bond", "crypto", "cryptocurrency"),
-    "SAVINGS": ("savings", "fixed deposit", "deposit", "emergency fund", "saving"),
+    "INTEREST_RATE": ("interest rate", "interest", "apr", "rate of return", "yield"),
+    "INVESTMENT": ("investment", "invest", "portfolio", "share", "stock", "bond", "crypto", "cryptocurrency", "treasury bill", "t-bill", "gold", "debenture", "mutual fund", "etf"),
+    "SAVINGS": ("savings", "fixed deposit", "deposit", "emergency fund", "saving", "fd", "cd", "certificate of deposit"),
+    "CURRENCY": ("foreign currency", "foreign exchange", "currency", "usd", "lkr", "eur", "gbp", "exchange rate", "forex", "devaluation", "depreciation", "inflation", "rupee", "dollar"),
     "BUDGETING": ("budget", "budgeting", "income", "expense", "spending", "cash flow"),
     "FINANCIAL_PROTECTION": ("insurance", "fraud", "scam", "financial planning", "financial wellbeing"),
     "RISK_TYPE": (
@@ -41,6 +42,8 @@ FINANCE_TERMS: dict[str, tuple[str, ...]] = {
         "concentration risk",
         "repayment risk",
         "interest-rate risk",
+        "inflation risk",
+        "currency risk",
         "diversification",
     ),
 }

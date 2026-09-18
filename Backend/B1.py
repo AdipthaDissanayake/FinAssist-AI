@@ -45,6 +45,7 @@ from Orchestrator_Agent.O1 import AgentWorkflowError, orchestrate_financial_ques
 from .auth_routes import router as auth_router
 from .auth import get_current_user, get_current_user_optional
 from .models import User
+from Security_Agent.S1 import InputSanitizer, PromptInjectionGuard, SafeLogger, SecurityHeadersMiddleware
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIRECTORY = PROJECT_ROOT / "Frontend"
@@ -68,6 +69,7 @@ class MessageCreateRequest(BaseModel):
 
 
 app = FastAPI(title="FinAssist AI", version="0.2.0")
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(subscription_router)
 app.include_router(auth_router)
 
@@ -148,24 +150,52 @@ def add_message(
 ) -> dict[str, Any]:
     """Store a question and run the IR → Risk Analysis agent workflow."""
     chat = _require_chat(database, chat_id)
-    corrected_query, spelling_corrections = finance_nlp.correct_finance_spelling(request.content.strip())
+
+    # 1. Security Layer: Input sanitization & control character scrubbing
+    sanitization = InputSanitizer.sanitize_financial_query(request.content)
+    cleaned_input = sanitization.cleaned_text
+
+    # 2. Security Layer: Direct Prompt Injection Inspection
+    injection_check = PromptInjectionGuard.inspect_query(cleaned_input)
+
+    corrected_query, spelling_corrections = finance_nlp.correct_finance_spelling(cleaned_input)
     domain_assessment = finance_nlp.assess_domain(corrected_query)
     user_message = Message(
         chat_id=chat.id,
         role="user",
-        content=request.content.strip(),
+        content=cleaned_input,
         extra_data={
             "domain_assessment": domain_assessment.to_dict(),
             "spelling_corrections": spelling_corrections,
             "retrieval_query": corrected_query if spelling_corrections else None,
+            "security_flags": injection_check.reasons if not injection_check.is_safe else [],
         },
     )
     database.add(user_message)
     if chat.title == "New financial question":
-        chat.title = _clean_title(request.content, 80)
+        chat.title = _clean_title(cleaned_input, 80)
     chat.updated_at = datetime.now(UTC)
     database.commit()
     database.refresh(user_message)
+
+    if not injection_check.is_safe:
+        assistant_message = Message(
+            chat_id=chat.id,
+            role="assistant",
+            content="I detected instructions attempting to alter system security rules or request unauthorized actions. Please ask a standard financial research question.",
+            extra_data={
+                "agent": "security-guard",
+                "security_flags": injection_check.reasons,
+                "retrieval_skipped": True,
+            },
+        )
+        database.add(assistant_message)
+        database.commit()
+        database.refresh(assistant_message)
+        return {
+            "user_message": _message_payload(database, user_message),
+            "assistant_message": _message_payload(database, assistant_message),
+        }
 
     if not domain_assessment.retrieval_allowed:
         content, suggested_questions = _domain_guard_response(domain_assessment)

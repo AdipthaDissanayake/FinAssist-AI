@@ -291,35 +291,76 @@ class TavilyRetriever:
         client.session.trust_env = _environment_flag("TAVILY_USE_SYSTEM_PROXY", default=False)
         return client
 
+    def _execute_search(self, query: str, top_k: int, include_domains: list[str] | None) -> list[dict[str, Any]]:
+        try:
+            kwargs: dict[str, Any] = {
+                "query": _tavily_finance_query(query),
+                "search_depth": os.getenv("TAVILY_SEARCH_DEPTH", "basic"),
+                "max_results": min(top_k * 3, 15),
+                "include_answer": False,
+            }
+            if include_domains:
+                kwargs["include_domains"] = include_domains
+
+            response = self._client.search(**kwargs)
+        except Exception:
+            return []
+
+        evidence = []
+        raw_results = response.get("results", []) if isinstance(response, dict) else []
+        for result in raw_results:
+            url = str(result.get("url") or "")
+            domain = _source_name_from_url(url).lower()
+            if any(blocked in domain for blocked in BLOCKED_DOMAINS):
+                continue
+
+            snippet = (result.get("content") or result.get("raw_content") or "").strip()
+            if not snippet:
+                continue
+
+            score = _optional_score(result.get("score"))
+            if score is not None and score < 0.05:
+                continue
+
+            entities = self.nlp.extract_entities(snippet)
+            is_finance_content = bool(entities) or any(
+                term in snippet.lower()
+                for term in (
+                    "interest", "rate", "loan", "borrow", "mortgage", "deposit", "risk", "inflation",
+                    "bank", "repayment", "credit", "invest", "yield", "fund", "financial", "debt", "currency", "price", "gold", "market"
+                )
+            )
+            if not is_finance_content:
+                continue
+
+            evidence.append(
+                {
+                    "text": snippet,
+                    "score": score,
+                    "source": result.get("title") or _source_name_from_url(url),
+                    "url": url,
+                    "page": None,
+                    "entities": entities,
+                }
+            )
+            if len(evidence) >= top_k:
+                break
+
+        evidence.sort(key=lambda item: (item["score"] is not None, item["score"] or 0.0), reverse=True)
+        return evidence
+
     def search(self, query: str, top_k: int = 5) -> dict[str, Any]:
         _validate_query(query, top_k)
         corrected_query, _ = self.nlp.correct_finance_spelling(query)
         processed_query = self.nlp.preprocess_query(corrected_query) or corrected_query
-        try:
-            response = self._client.search(
-                query=_tavily_finance_query(corrected_query),
-                search_depth=os.getenv("TAVILY_SEARCH_DEPTH", "basic"),
-                max_results=top_k,
-                include_domains=self.include_domains,
-                include_answer=False,
-            )
-        except RequestException as exc:
-            raise RuntimeError(
-                "Financial-source retrieval is temporarily unavailable. Check your internet connection or proxy settings, then try again."
-            ) from exc
-        evidence = []
-        for result in response.get("results", [])[:top_k]:
-            snippet = (result.get("content") or result.get("raw_content") or "").strip()
-            evidence.append(
-                {
-                    "text": snippet,
-                    "score": _optional_score(result.get("score")),
-                    "source": result.get("title") or _source_name_from_url(result.get("url")),
-                    "url": result.get("url"),
-                    "page": None,
-                    "entities": self.nlp.extract_entities(snippet),
-                }
-            )
+
+        # 1. Primary search: attempt strictly on trusted regulatory & institutional finance domains
+        evidence = self._execute_search(corrected_query, top_k, include_domains=self.include_domains)
+
+        # 2. Resilient Fallback: if zero evidence was found in the strict domain set, search broader financial web while filtering blocked/non-finance domains
+        if not evidence:
+            evidence = self._execute_search(corrected_query, top_k, include_domains=None)
+
         return {
             "query": query,
             "processed_query": processed_query,
@@ -541,6 +582,23 @@ def _antigravity_empty_result_message(interaction: Any, answer_text: str) -> str
     return f"Antigravity returned no final output (status: {status}). Retry the request."
 
 
+BLOCKED_DOMAINS = frozenset(
+    {
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be",
+        "tiktok.com",
+        "facebook.com",
+        "instagram.com",
+        "twitter.com",
+        "x.com",
+        "reddit.com",
+        "pinterest.com",
+        "vimeo.com",
+    }
+)
+
 DEFAULT_TRUSTED_FINANCE_DOMAINS = (
     "cbsl.gov.lk",
     "sec.gov.lk",
@@ -562,22 +620,24 @@ def _trusted_finance_domains() -> list[str]:
 
 
 def _tavily_finance_query(query: str) -> str:
-    """Format search query for financial risk and consumer protection retrieval.
+    """Format search query for financial risk and consumer protection retrieval."""
+    clean = re.sub(
+        r"^(?:i\s+want\s+to\s+take\s+an?|can\s+i|what\s+are\s+the\s+risks\s+of|what\s+risks\s+should\s+i\s+consider\s+for|what\s+risks\s+should\s+i\s+consider\??|tell\s+me\s+about|how\s+to)\s*",
+        "",
+        query.strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+    lowered = clean.lower()
 
-    Avoid appending generic 'education' because it causes search engines to bias
-    heavily toward student-education loans and ombudsman reports rather than
-    general borrowing and consumer risks.
-    """
-    lowered = query.lower()
-    if any(term in lowered for term in ("loan", "borrow", "debt", "mortgage", "credit")):
-        return f"{query} borrowing risks repayment terms interest rate considerations"
-    if any(term in lowered for term in ("invest", "stock", "share", "portfolio", "etf", "bond")):
-        return f"{query} investment risks considerations volatility returns"
-    if any(term in lowered for term in ("saving", "deposit", "fixed deposit", "emergency fund")):
-        return f"{query} savings risks considerations interest rates liquidity"
+    if any(term in lowered for term in ("loan", "borrow", "debt", "mortgage", "credit", "housing")):
+        return f"{clean} borrowing risks repayment terms interest rate considerations"
+    if any(term in lowered for term in ("invest", "stock", "share", "portfolio", "etf", "bond", "gold")):
+        return f"{clean} investment risks considerations volatility returns"
+    if any(term in lowered for term in ("saving", "deposit", "fixed deposit", "emergency fund", "account")):
+        return f"{clean} savings risks considerations interest rates liquidity"
     if any(term in lowered for term in ("budget", "income", "expense", "spending")):
-        return f"{query} budgeting planning financial risks debt management"
-    return f"{query} financial risks and considerations"
+        return f"{clean} budgeting planning financial risks debt management"
+    return f"{clean} financial risks and considerations"
 
 
 def _optional_score(value: Any) -> float | None:

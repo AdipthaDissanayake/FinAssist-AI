@@ -41,6 +41,7 @@ export default function App() {
   const inputRef = useRef(null);
   const messageEndRef = useRef(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
   const [isLoggedIn, setIsLoggedIn] = useState(() =>
     Boolean(localStorage.getItem("token")),
   );
@@ -84,10 +85,18 @@ export default function App() {
   }, []);
 
   async function loadChats() {
+    if (!isLoggedIn) {
+      setChats([]);
+      return;
+    }
     try {
       setChats(await api("/api/chats"));
     } catch (requestError) {
-      setError(requestError.message);
+      if (requestError?.status === 401) {
+        handleLogout();
+      } else {
+        setError(requestError.message);
+      }
     }
   }
   async function openChat(chatId) {
@@ -97,7 +106,12 @@ export default function App() {
       setActiveChatId(chatId);
       setMessages(data.messages);
     } catch (requestError) {
-      setError(requestError.message);
+      if (requestError?.status === 401) {
+        handleLogout();
+        setIsAuthOpen(true);
+      } else {
+        setError(requestError.message);
+      }
     }
   }
   async function deleteChat(chatId) {
@@ -110,7 +124,12 @@ export default function App() {
       }
       await loadChats();
     } catch (requestError) {
-      setError(requestError.message);
+      if (requestError?.status === 401) {
+        handleLogout();
+        setIsAuthOpen(true);
+      } else {
+        setError(requestError.message);
+      }
     }
   }
   function handleLogout() {
@@ -145,6 +164,12 @@ export default function App() {
   async function sendQuestion(question = draft) {
     const content = question.trim();
     if (!content || isSending) return;
+    if (!isLoggedIn) {
+      setAuthMode("login");
+      setIsAuthOpen(true);
+      setError("Please sign in or create an account to start financial research.");
+      return;
+    }
     setIsSending(true);
     setError("");
     try {
@@ -261,7 +286,27 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <span className="status-dot" /> History saved · sign-in pending
+          {isLoggedIn ? (
+            <div className="sidebar-user-badge">
+              <span className="status-dot online" />
+              <span className="sidebar-user-label">
+                {currentUser?.first_name
+                  ? `${currentUser.first_name} ${currentUser.last_name || ""}`.trim()
+                  : currentUser?.email || "Signed In"}
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="sidebar-signin-link"
+              onClick={() => {
+                setAuthMode("login");
+                setIsAuthOpen(true);
+              }}
+            >
+              <span className="status-dot" /> Sign in to save chats
+            </button>
+          )}
         </div>
       </aside>
 
@@ -279,24 +324,53 @@ export default function App() {
           <div className="top-actions">
             {isLoggedIn ? (
               <div className="account-actions">
-                <span className="current-user" title={currentUser?.email || "Loading account"}>
+                <span
+                  className="current-user"
+                  title={
+                    currentUser?.first_name
+                      ? `${currentUser.first_name} ${currentUser.last_name || ""} (${currentUser.email})`
+                      : currentUser?.email || "Account"
+                  }
+                >
                   <span className="current-user-avatar" aria-hidden="true">
-                    {(currentUser?.email || "U").slice(0, 1).toUpperCase()}
+                    {(currentUser?.first_name
+                      ? currentUser.first_name.slice(0, 1)
+                      : (currentUser?.email || "U").slice(0, 1)
+                    ).toUpperCase()}
                   </span>
-                  <span className="current-user-email">{currentUser?.email || "Loading..."}</span>
+                  <span className="current-user-email">
+                    {currentUser?.first_name
+                      ? `${currentUser.first_name} ${currentUser.last_name || ""}`.trim()
+                      : currentUser?.email || "User"}
+                  </span>
                 </span>
                 <button className="theme-toggle" type="button" onClick={handleLogout}>
                   Log Out
                 </button>
               </div>
             ) : (
-              <button
-                className="theme-toggle"
-                type="button"
-                onClick={() => setIsAuthOpen(true)}
-              >
-                Log In
-              </button>
+              <div className="auth-nav-buttons">
+                <button
+                  className="theme-toggle"
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setIsAuthOpen(true);
+                  }}
+                >
+                  Sign In
+                </button>
+                <button
+                  className="theme-toggle register-nav-btn"
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("register");
+                    setIsAuthOpen(true);
+                  }}
+                >
+                  Sign Up
+                </button>
+              </div>
             )}
 
             <span className="source-status">
@@ -345,9 +419,9 @@ export default function App() {
               )}
 
               {isSending && (
-                <div className="retrieving">
+                <div className="retrieving" role="status">
                   <span className="loading-dot" />
-                  <span>Searching trusted financial sources...</span>
+                  FinAssist is retrieving trusted evidence and evaluating financial risks...
                 </div>
               )}
 
@@ -357,36 +431,29 @@ export default function App() {
             <div className="composer-area">
               <form
                 className="composer"
-                onSubmit={(event) => {
-                  event.preventDefault();
+                onSubmit={(e) => {
+                  e.preventDefault();
                   sendQuestion();
                 }}
               >
-                <label className="sr-only" htmlFor="question-input">
-                  Financial question
-                </label>
-
                 <textarea
-                  id="question-input"
                   ref={inputRef}
                   value={draft}
-                  rows="1"
-                  maxLength="2000"
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
                       sendQuestion();
                     }
                   }}
-                  placeholder="Ask about loans, savings, investments, or interest rates..."
+                  placeholder="Ask any financial question (e.g. loan risks, fixed deposits, risk management)..."
+                  rows={1}
                 />
-
                 <button
                   className="send-button"
                   type="submit"
-                  disabled={isSending || !draft.trim()}
-                  aria-label="Send question"
+                  disabled={!draft.trim() || isSending}
+                  aria-label="Send financial question"
                 >
                   <Icon name="send" />
                 </button>
@@ -403,8 +470,13 @@ export default function App() {
 
       <AuthModal
         isOpen={isAuthOpen}
+        initialMode={authMode}
         onClose={() => setIsAuthOpen(false)}
-        onAuthSuccess={() => setIsLoggedIn(true)}
+        onAuthSuccess={() => {
+          setIsLoggedIn(true);
+          setIsAuthOpen(false);
+          setError("");
+        }}
       />
     </main>
   );
@@ -441,10 +513,11 @@ function Welcome({ onSuggestion, inputRef }) {
   );
 }
 
-function MessageCard({ message, onSuggestion }) {
-  const retrieval = message.metadata?.retrieval;
-  const riskAnalysis = message.metadata?.risk_analysis;
-  const suggestedQuestions = message.metadata?.suggested_questions;
+function ChatMessage({ message, onSuggestion }) {
+  const metadata = message.extra_data || {};
+  const riskAnalysis = metadata.risk_analysis;
+  const suggestedQuestions = metadata.suggested_questions || [];
+  const retrieval = metadata.retrieval;
   const isUser = message.role === "user";
   return (
     <article className={`message ${isUser ? "user" : "assistant"}`}>
@@ -452,12 +525,17 @@ function MessageCard({ message, onSuggestion }) {
       <div className="message-body">
         <p className="message-role">{isUser ? "You" : "FinAssist"}</p>
         {riskAnalysis ? (
-          <RiskAnalysisResult analysis={riskAnalysis} />
+          <RiskAnalysisResult
+            analysis={riskAnalysis}
+            evidence={retrieval?.evidence}
+          />
         ) : (
-          <div className="message-text">{message.content}</div>
-        )}
-        {retrieval?.evidence?.length > 0 && (
-          <EvidenceCards evidence={retrieval.evidence} />
+          <>
+            <div className="message-text">{message.content}</div>
+            {retrieval?.evidence?.length > 0 && (
+              <EvidenceCards evidence={retrieval.evidence} />
+            )}
+          </>
         )}
         {suggestedQuestions?.length > 0 && (
           <SuggestedQuestions
@@ -470,18 +548,18 @@ function MessageCard({ message, onSuggestion }) {
   );
 }
 
-function RiskAnalysisResult({ analysis }) {
+function RiskAnalysisResult({ analysis, evidence }) {
   const sources = new Map(
     (analysis.sources || []).map((source) => [String(source.id), source]),
   );
   return (
     <section className="risk-result" aria-label="Risk analysis">
       <div className="risk-summary">
-        <p className="result-heading">Risk summary</p>
+        <p className="result-heading">Executive Risk Summary</p>
         <p>{analysis.summary}</p>
       </div>
       <div className="identified-risks">
-        <p className="result-heading">Identified risks</p>
+        <p className="result-heading">Identified Risk Breakdown</p>
         {analysis.risks?.length > 0 ? (
           analysis.risks.map((risk) => (
             <article className="risk-card" key={risk.name}>
@@ -493,7 +571,12 @@ function RiskAnalysisResult({ analysis }) {
                   {risk.level}
                 </span>
               </div>
-              <p>{risk.explanation}</p>
+              <p className="risk-explanation">{risk.explanation}</p>
+              {risk.level_reason && (
+                <div className="risk-level-reason">
+                  <strong>Severity Rationale:</strong> {risk.level_reason}
+                </div>
+              )}
               <div className="risk-sources">
                 <span>
                   Supporting source{risk.evidence_ids?.length === 1 ? "" : "s"}
@@ -526,9 +609,22 @@ function RiskAnalysisResult({ analysis }) {
           </p>
         )}
       </div>
-      {analysis.disclaimer && (
-        <p className="risk-disclaimer">{analysis.disclaimer}</p>
-      )}
+
+      {evidence?.length > 0 && <EvidenceCards evidence={evidence} />}
+
+      <div className="risk-disclaimer-card" role="note">
+        <div className="disclaimer-header">
+          <Icon name="shield" />
+          <span>AI Model Notice & Educational Disclaimer</span>
+        </div>
+        <p className="disclaimer-body">
+          {analysis.disclaimer ||
+            "This is educational financial information, not personalised investment or lending advice. Consider a qualified financial professional for decisions about your circumstances."}
+        </p>
+        <p className="disclaimer-notice">
+          ⚠️ <em>FinAssist is an AI assistant. AI models can make mistakes or have incomplete market context. Always verify crucial financial decisions with certified professionals or official regulatory disclosures.</em>
+        </p>
+      </div>
     </section>
   );
 }
@@ -557,17 +653,23 @@ function SuggestedQuestions({ questions, onSelect }) {
 }
 
 function EvidenceCards({ evidence }) {
+  const sortedEvidence = [...(evidence || [])].sort((a, b) => {
+    const scoreA = typeof a.score === "number" ? a.score : 0;
+    const scoreB = typeof b.score === "number" ? b.score : 0;
+    return scoreB - scoreA;
+  });
+
   return (
     <section className="evidence-wrap">
       <p className="evidence-heading">
         <Icon name="sources" /> Retrieved evidence{" "}
         <span>
-          {evidence.length} source{evidence.length === 1 ? "" : "s"}
+          {sortedEvidence.length} source{sortedEvidence.length === 1 ? "" : "s"}
         </span>
       </p>
       <div className="evidence-grid">
-        {evidence.map((item) => (
-          <article className="evidence-card" key={item.id}>
+        {sortedEvidence.map((item, index) => (
+          <article className="evidence-card" key={item.id || item.url || index}>
             <div className="evidence-card-top">
               <span>{sourceDomain(item.url)}</span>
               {typeof item.score === "number" && (
@@ -582,7 +684,6 @@ function EvidenceCards({ evidence }) {
             ) : (
               <strong>{item.source || "Source"}</strong>
             )}
-            <p>{item.text || "No preview available."}</p>
           </article>
         ))}
       </div>

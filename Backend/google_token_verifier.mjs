@@ -22,6 +22,9 @@ process.stdin.on("end", async () => {
       sub: payload.sub,
       email: payload.email,
       email_verified: payload.email_verified,
+      given_name: payload.given_name || "",
+      family_name: payload.family_name || "",
+      name: payload.name || "",
     }));
   } catch {
     process.exitCode = 1;
