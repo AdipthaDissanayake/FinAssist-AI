@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+
+from IR_NLP_Agent.main import retrieve_financial_evidence
+from Risk_Agent.R1 import analyze_financial_risks
 
 
 IR_AGENT_URL = "http://127.0.0.1:8010"
@@ -14,7 +17,7 @@ DECISION_SUPPORT_AGENT_URL = "http://127.0.0.1:8003"
 
 class OrchestrationRequest(BaseModel):
     query: str = Field(min_length=3, max_length=2000)
-    top_k: int = Field(default=3, ge=1, le=5)
+    top_k: int = Field(default=5, ge=1, le=5)
 
 
 class AgentWorkflowError(RuntimeError):
@@ -183,8 +186,22 @@ def format_risk_analysis(
                 "",
             )
 
+            level_reason = risk.get(
+                "level_reason",
+                "",
+            )
+
+            evidence_ids = risk.get(
+                "evidence_ids",
+                [],
+            )
+
+            level_tag = f" ({level})" if level else ""
+            level_reason_tag = f" [Level rationale: {level_reason}]" if level_reason else ""
+            evidence_tag = f" [Evidence: {', '.join(evidence_ids)}]" if evidence_ids else ""
+
             lines.append(
-                f"- {name} ({level}): {explanation}"
+                f"- {name}{level_tag}{level_reason_tag}: {explanation}{evidence_tag}"
             )
 
     disclaimer = risk_analysis.get(
@@ -201,11 +218,14 @@ def format_risk_analysis(
 
 def orchestrate_financial_question(
     query: str,
-    top_k: int = 3,
+    top_k: int = 5,
+    *,
+    retrieve: Callable[..., dict[str, Any]] = retrieve_financial_evidence,
+    analyse: Callable[..., dict[str, Any]] = analyze_financial_risks,
 ) -> dict[str, Any]:
     """
     Coordinate the complete flow:
-    IR Agent -> Risk Agent -> Decision Support Agent -> Final response.
+    IR Agent -> Risk Agent -> Final response.
     """
 
     trace = []
@@ -214,10 +234,17 @@ def orchestrate_financial_question(
     # Step 1 - Information Retrieval Agent
     # -------------------------------------------------
 
-    retrieval = call_ir_agent(
-        query=query,
-        top_k=top_k,
-    )
+    try:
+        import inspect
+        sig = inspect.signature(retrieve)
+        if "engine" in sig.parameters:
+            retrieval = retrieve(query, top_k=top_k, engine="tavily")
+        else:
+            retrieval = retrieve(query, top_k=top_k)
+    except Exception as exc:
+        raise AgentWorkflowError(
+            "The Information Retrieval Agent is temporarily unavailable."
+        ) from exc
 
     evidence = (
         retrieval.get("evidence")
@@ -251,17 +278,6 @@ def orchestrate_financial_question(
             }
         )
 
-        trace.append(
-            {
-                "agent": "financial-decision-support",
-                "status": "skipped",
-                "detail": (
-                    "Decision support was skipped because "
-                    "no grounded risk analysis was available."
-                ),
-            }
-        )
-
         return {
             "query": query,
             "retrieval": retrieval,
@@ -271,7 +287,7 @@ def orchestrate_financial_question(
             "final_response": (
                 "I could not find enough trustworthy "
                 "source evidence to perform a grounded "
-                "risk analysis."
+                "risk analysis. Please try a more specific financial question."
             ),
         }
 
@@ -283,25 +299,27 @@ def orchestrate_financial_question(
         evidence
     )
 
-    trace.append(
-        {
-            "agent": "orchestrator",
-            "status": "completed",
-            "detail": (
-                "Normalized retrieved evidence "
-                "for the Risk Analysis Agent."
-            ),
-        }
-    )
-
     # -------------------------------------------------
     # Step 4 - Risk Analysis Agent
     # -------------------------------------------------
 
-    risk_analysis = call_risk_agent(
-        query=query,
-        evidence=normalized_evidence,
-    )
+    try:
+        import inspect
+        sig = inspect.signature(analyse)
+        if "evidence" in sig.parameters:
+            risk_analysis = analyse(
+                query=query,
+                evidence=normalized_evidence,
+            )
+        else:
+            risk_analysis = analyse(
+                query,
+                normalized_evidence,
+            )
+    except Exception as exc:
+        raise AgentWorkflowError(
+            "The Risk Analysis Agent is temporarily unavailable."
+        ) from exc
 
     trace.append(
         {
@@ -316,28 +334,7 @@ def orchestrate_financial_question(
     )
 
     # -------------------------------------------------
-    # Step 5 - Financial Decision Support Agent
-    # -------------------------------------------------
-
-    decision_support = call_decision_support_agent(
-        query=query,
-        risk_analysis=risk_analysis,
-        evidence=normalized_evidence,
-    )
-
-    trace.append(
-        {
-            "agent": "financial-decision-support",
-            "status": "completed",
-            "detail": (
-                "Generated neutral decision-support "
-                "considerations and questions."
-            ),
-        }
-    )
-
-    # -------------------------------------------------
-    # Step 6 - Final response
+    # Step 5 - Final response
     # -------------------------------------------------
 
     final_response = format_risk_analysis(
@@ -348,10 +345,11 @@ def orchestrate_financial_question(
         "query": query,
         "retrieval": retrieval,
         "risk_analysis": risk_analysis,
-        "decision_support": decision_support,
+        "decision_support": None,
         "agent_trace": trace,
         "final_response": final_response,
     }
+
 
 
 app = FastAPI(

@@ -107,7 +107,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           theme: "outline",
           size: "large",
           text: isRegister ? "signup_with" : "signin_with",
-          width: 320,
+          width: 384,
           shape: "rectangular",
           logo_alignment: "left",
         });
@@ -236,7 +236,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           <div
             ref={googleButtonRef}
             className="google-gis-container"
-            style={{ display: googleConfigured ? "block" : "none" }}
+            style={{ display: googleConfigured ? "flex" : "none" }}
           />
           {!googleConfigured && (
             <button

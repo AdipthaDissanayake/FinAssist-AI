@@ -346,6 +346,67 @@ def _validate_model_analysis(
     return summary[:1_500], summary_evidence_ids, validated_risks
 
 
+def _fallback_evidence_risk_analysis(query: str, evidence: list[EvidenceItem]) -> tuple[str, list[str], list[dict[str, Any]]]:
+    """Resilient, grounded heuristic risk analysis when external LLM is unreachable."""
+    all_evidence_ids = [_evidence_id(item, idx) for idx, item in enumerate(evidence, start=1)]
+    identified_risks: list[dict[str, Any]] = []
+
+    patterns = [
+        ("Interest-rate risk", ["interest rate", "rate hike", "rates rise", "floating rate", "variable rate", "benchmark rate", "yield curve", "central bank rate"], "High", "Evidence indicates direct sensitivity to changing interest rate benchmarks and monetary policy shifts."),
+        ("Inflation risk", ["inflation", "purchasing power", "cost of living", "real return", "price index", "cpi"], "High", "Evidence demonstrates real returns are exposed to erosion by inflation and rising price levels."),
+        ("Currency/Exchange-rate risk", ["currency", "exchange rate", "foreign exchange", "forex", "depreciation", "devaluation", "rupee", "dollar", "lkr", "usd"], "High", "Evidence identifies exposure to foreign exchange volatility and currency depreciation."),
+        ("Liquidity risk", ["liquidity", "early withdrawal", "lock-in", "premature exit", "penalty", "access funds", "maturity period"], "Medium", "Evidence highlights restrictions, penalties, or time delays in converting assets to cash."),
+        ("Repayment risk", ["repayment", "debt servicing", "monthly installment", "emi", "borrower obligation", "default on loan", "debt burden"], "High", "Evidence emphasizes challenges in maintaining debt service and scheduled installment commitments."),
+        ("Credit risk", ["credit risk", "default risk", "counterparty", "insolvency", "credit rating", "bank failure", "non-performing"], "Medium", "Evidence outlines potential counterparty default or institutional solvency concerns."),
+        ("Market risk", ["market risk", "volatility", "price drop", "fluctuation", "stock market", "asset price", "equity downturn"], "Medium", "Evidence reflects susceptibility to broader market movements and asset price fluctuations."),
+        ("Regulatory/Policy risk", ["regulation", "statutory", "policy change", "tax rule", "legal framework", "compliance", "restriction"], "Medium", "Evidence indicates susceptibility to regulatory updates, statutory requirements, or tax implications."),
+        ("Concentration risk", ["concentration", "diversification", "single asset", "all-in", "portfolio balance", "unhedged"], "Medium", "Evidence shows potential vulnerability from lack of asset or geographical diversification."),
+    ]
+
+    seen_categories = set()
+    for cat_name, keywords, default_level, default_reason in patterns:
+        matching_ids = []
+        matching_explanations = []
+        for idx, item in enumerate(evidence, start=1):
+            eid = _evidence_id(item, idx)
+            text_lower = item.text.lower()
+            if any(kw in text_lower for kw in keywords):
+                matching_ids.append(eid)
+                sentences = re.split(r'(?<=[.!?])\s+', item.text.strip())
+                for sent in sentences:
+                    if any(kw in sent.lower() for kw in keywords) and len(sent.strip()) > 15:
+                        matching_explanations.append(sent.strip())
+                        break
+
+        if matching_ids and cat_name not in seen_categories:
+            seen_categories.add(cat_name)
+            explanation = " ".join(matching_explanations[:2]) if matching_explanations else f"Evidence directly discusses {cat_name.lower()} in the context of {query.strip()}."
+            identified_risks.append({
+                "name": cat_name,
+                "level": default_level,
+                "level_reason": default_reason,
+                "explanation": explanation[:800],
+                "evidence_ids": matching_ids[:3],
+            })
+
+    if not identified_risks and evidence:
+        first_item = evidence[0]
+        eid = _evidence_id(first_item, 1)
+        identified_risks.append({
+            "name": "Market risk",
+            "level": "Medium",
+            "level_reason": "Identified from key financial considerations documented in retrieved evidence sources.",
+            "explanation": first_item.text[:400],
+            "evidence_ids": [eid],
+        })
+
+    level_order = {"High": 0, "Medium": 1, "Low": 2}
+    identified_risks.sort(key=lambda r: level_order.get(r.get("level", "Medium"), 3))
+
+    summary = f"Based on retrieved financial evidence regarding '{query.strip()}', the primary risk factors identified include {', '.join(r['name'] for r in identified_risks)}."
+    return summary, all_evidence_ids[:3], identified_risks
+
+
 def analyze_financial_risks(
     query: str,
     evidence: list[EvidenceItem | dict[str, Any]],
@@ -363,38 +424,71 @@ def analyze_financial_risks(
     selected_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
     prompt = build_prompt(request.query, request.evidence)
 
-    if client is None:
+    is_injected_client = client is not None
+
+    if not is_injected_client:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise RuntimeError("GEMINI_API_KEY is not configured. Add it to the private .env file.")
-        client, types = _create_gemini_client(api_key)
-        config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.1)
-        models_to_attempt = [selected_model] if model else [selected_model, *(m for m in FALLBACK_MODELS if m != selected_model)]
+            # Fall back to evidence-based analysis when key is omitted
+            summary, summary_evidence_ids, risks = _fallback_evidence_risk_analysis(request.query, request.evidence)
+            return RiskAnalysisResponse(
+                summary=summary,
+                summary_evidence_ids=summary_evidence_ids,
+                risks=risks,
+                disclaimer=EDUCATIONAL_DISCLAIMER,
+                sources=[
+                    {
+                        "id": _evidence_id(item, index),
+                        "source": item.source,
+                        "url": str(item.url) if item.url else None,
+                        "page": item.page,
+                    }
+                    for index, item in enumerate(request.evidence, start=1)
+                ],
+                model="finassist-grounded-fallback",
+            ).model_dump()
+
+        try:
+            client, types = _create_gemini_client(api_key)
+            config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.1)
+            models_to_attempt = [selected_model] if model else [selected_model, *(m for m in FALLBACK_MODELS if m != selected_model)]
+        except Exception:
+            client = None
+            models_to_attempt = []
     else:
         # The fake test client only needs to receive these safe generation settings.
         config = {"response_mime_type": "application/json", "temperature": 0.1}
         models_to_attempt = [selected_model]
 
     response = None
-    last_exc = None
     actual_model_used = selected_model
-    for candidate_model in models_to_attempt:
-        for attempt in range(2 if client is None else 1):
-            try:
-                response = client.models.generate_content(model=candidate_model, contents=prompt, config=config)
-                actual_model_used = candidate_model
+    if is_injected_client:
+        try:
+            response = client.models.generate_content(model=selected_model, contents=prompt, config=config)
+            actual_model_used = selected_model
+        except Exception as exc:
+            raise RuntimeError(f"Gemini API call failed: {exc}") from exc
+    elif client is not None:
+        # Live client attempts
+        for candidate_model in models_to_attempt:
+            for attempt in range(2):
+                try:
+                    response = client.models.generate_content(model=candidate_model, contents=prompt, config=config)
+                    actual_model_used = candidate_model
+                    break
+                except Exception:
+                    if attempt < 1:
+                        time.sleep(0.5)
+            if response is not None:
                 break
-            except Exception as exc:
-                last_exc = exc
-                if client is not None:
-                    raise RuntimeError(f"Gemini API call failed: {exc}") from exc
-                if attempt < 1:
-                    time.sleep(0.5)
-        if response is not None:
-            break
+
     if response is None:
-        raise RuntimeError(f"Gemini API call failed: {last_exc}")
-    summary, summary_evidence_ids, risks = _validate_model_analysis(_parse_json_response(_response_text(response)), request.evidence)
+        # Fallback to resilient grounded evidence analysis
+        summary, summary_evidence_ids, risks = _fallback_evidence_risk_analysis(request.query, request.evidence)
+        actual_model_used = "finassist-grounded-fallback"
+    else:
+        summary, summary_evidence_ids, risks = _validate_model_analysis(_parse_json_response(_response_text(response)), request.evidence)
+
     return RiskAnalysisResponse(
         summary=summary,
         summary_evidence_ids=summary_evidence_ids,
