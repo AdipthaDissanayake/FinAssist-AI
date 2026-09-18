@@ -184,7 +184,7 @@ export default function App() {
       }
       const result = await api(`/api/chats/${chatId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ content, top_k: 3 }),
+        body: JSON.stringify({ content, top_k: 5 }),
       });
       setMessages((current) => [
         ...current,
@@ -410,7 +410,7 @@ export default function App() {
                 <Welcome onSuggestion={useSuggestion} inputRef={inputRef} />
               ) : (
                 messages.map((message) => (
-                  <MessageCard
+                  <ChatMessage
                     key={message.id}
                     message={message}
                     onSuggestion={useSuggestion}
@@ -513,30 +513,29 @@ function Welcome({ onSuggestion, inputRef }) {
   );
 }
 
-<<<<<<< HEAD
 function ChatMessage({ message, onSuggestion }) {
-  const metadata = message.extra_data || {};
+  const [feedback, setFeedback] = useState(null); // 'like' | 'dislike' | null
+  const [copied, setCopied] = useState(false);
+  const metadata = message.extra_data || message.metadata || {};
   const riskAnalysis = metadata.risk_analysis;
   const suggestedQuestions = metadata.suggested_questions || [];
   const retrieval = metadata.retrieval;
-=======
-function MessageCard({ message, onSuggestion }) {
-  const retrieval = message.metadata?.retrieval;
-  const riskAnalysis = message.metadata?.risk_analysis;
-  const decisionSupport = message.metadata?.decision_support;
-  const suggestedQuestions = message.metadata?.suggested_questions;
->>>>>>> main
   const isUser = message.role === "user";
-  return <article className={`message ${isUser ? "user" : "assistant"}`}>
-    <div className="avatar">{isUser ? "You" : "FA"}</div>
-    <div className="message-body">
-      <p className="message-role">{isUser ? "You" : "FinAssist"}</p>
-      {riskAnalysis ? <RiskAnalysisResult analysis={riskAnalysis} /> : <div className="message-text">{message.content}</div>}
-      {decisionSupport && <DecisionSupportResult support={decisionSupport} />}
-      {retrieval?.evidence?.length > 0 && <EvidenceCards evidence={retrieval.evidence} />}
-      {suggestedQuestions?.length > 0 && <SuggestedQuestions questions={suggestedQuestions} onSelect={onSuggestion} />}
-    </div>
-  </article>;
+
+  const handleShare = () => {
+    let shareText = message.content || "";
+    if (riskAnalysis) {
+      const summaryText = riskAnalysis.summary ? `Summary:\n${riskAnalysis.summary}\n\n` : "";
+      const risksText = (riskAnalysis.risks || [])
+        .map((r) => `• ${r.name} (${r.level}): ${r.explanation}`)
+        .join("\n");
+      shareText = `FinAssist Financial Risk Analysis:\n\n${summaryText}Identified Risks:\n${risksText}`;
+    }
+    navigator.clipboard.writeText(shareText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <article className={`message ${isUser ? "user" : "assistant"}`}>
       <div className="avatar">{isUser ? "You" : "FA"}</div>
@@ -561,6 +560,40 @@ function MessageCard({ message, onSuggestion }) {
             onSelect={onSuggestion}
           />
         )}
+        {!isUser && (
+          <div className="message-actions">
+            <button
+              type="button"
+              className={`action-btn ${feedback === "like" ? "active like" : ""}`}
+              onClick={() => setFeedback(feedback === "like" ? null : "like")}
+              title="Helpful response"
+              aria-label="Helpful response"
+            >
+              <Icon name="thumbs-up" />
+              <span>Helpful</span>
+            </button>
+            <button
+              type="button"
+              className={`action-btn ${feedback === "dislike" ? "active dislike" : ""}`}
+              onClick={() => setFeedback(feedback === "dislike" ? null : "dislike")}
+              title="Not helpful"
+              aria-label="Not helpful"
+            >
+              <Icon name="thumbs-down" />
+              <span>Not helpful</span>
+            </button>
+            <button
+              type="button"
+              className={`action-btn ${copied ? "copied" : ""}`}
+              onClick={handleShare}
+              title="Share / Copy response"
+              aria-label="Share response"
+            >
+              <Icon name={copied ? "check" : "share"} />
+              <span>{copied ? "Copied!" : "Share"}</span>
+            </button>
+          </div>
+        )}
       </div>
     </article>
   );
@@ -570,16 +603,28 @@ function RiskAnalysisResult({ analysis, evidence }) {
   const sources = new Map(
     (analysis.sources || []).map((source) => [String(source.id), source]),
   );
+
+  const levelRank = { high: 3, medium: 2, low: 1 };
+  const sortedRisks = [...(analysis.risks || [])].sort((a, b) => {
+    const rankA = levelRank[String(a.level).toLowerCase()] || 0;
+    const rankB = levelRank[String(b.level).toLowerCase()] || 0;
+    return rankB - rankA;
+  });
+
   return (
     <section className="risk-result" aria-label="Risk analysis">
       <div className="risk-summary">
-        <p className="result-heading">Executive Risk Summary</p>
-        <p>{analysis.summary}</p>
+        <h2 className="section-heading">
+          <Icon name="spark" /> Executive Risk Summary
+        </h2>
+        <p className="summary-text">{analysis.summary}</p>
       </div>
       <div className="identified-risks">
-        <p className="result-heading">Identified Risk Breakdown</p>
-        {analysis.risks?.length > 0 ? (
-          analysis.risks.map((risk) => (
+        <h2 className="section-heading">
+          <Icon name="warning" /> Identified Risk Breakdown
+        </h2>
+        {sortedRisks?.length > 0 ? (
+          sortedRisks.map((risk) => (
             <article className="risk-card" key={risk.name}>
               <div className="risk-card-heading">
                 <h3>{risk.name}</h3>
@@ -628,7 +673,9 @@ function RiskAnalysisResult({ analysis, evidence }) {
         )}
       </div>
 
-      {evidence?.length > 0 && <EvidenceCards evidence={evidence} />}
+      {(evidence?.length > 0 ? evidence : (analysis?.sources?.length > 0 ? analysis.sources : []))?.length > 0 && (
+        <EvidenceCards evidence={evidence?.length > 0 ? evidence : analysis.sources} />
+      )}
 
       <div className="risk-disclaimer-card" role="note">
         <div className="disclaimer-header">
@@ -666,35 +713,28 @@ function DecisionSupportResult({ support }) {
         <div className="decision-questions">
           <p className="result-heading">Questions to ask before deciding</p>
 
-          {support.questions_to_consider.map((question, index) => (
-            <p key={index}>• {question}</p>
-          ))}
+          <ul>
+            {support.questions_to_consider.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
         </div>
-      )}
-
-      {support.disclaimer && (
-        <p className="risk-disclaimer">
-          {support.disclaimer}
-        </p>
       )}
     </section>
   );
 }
 function SuggestedQuestions({ questions, onSelect }) {
   return (
-    <section
-      className="message-suggestions"
-      aria-label="Suggested financial questions"
-    >
-      <p>Suggested questions</p>
+    <section className="message-suggestions" aria-label="Suggested follow-up questions">
+      <p>Suggested questions to explore</p>
       <div>
-        {questions.map((item) => (
+        {questions.map((question) => (
           <button
-            key={item.question}
+            key={question}
             type="button"
-            onClick={() => onSelect(item.question)}
+            onClick={() => onSelect(question)}
           >
-            {item.label}
+            <span>{question}</span>
             <Icon name="arrow" />
           </button>
         ))}
@@ -710,35 +750,68 @@ function EvidenceCards({ evidence }) {
     return scoreB - scoreA;
   });
 
+  if (sortedEvidence.length === 0) return null;
+
   return (
-    <section className="evidence-wrap">
-      <p className="evidence-heading">
-        <Icon name="sources" /> Retrieved evidence{" "}
-        <span>
-          {sortedEvidence.length} source{sortedEvidence.length === 1 ? "" : "s"}
+    <div className="verified-evidence-block">
+      <div className="evidence-block-header">
+        <h2 className="section-heading">
+          <Icon name="sources" /> Verified Source Evidence
+        </h2>
+        <span className="evidence-count-badge">
+          {sortedEvidence.length} source{sortedEvidence.length === 1 ? "" : "s"} analyzed
         </span>
-      </p>
-      <div className="evidence-grid">
-        {sortedEvidence.map((item, index) => (
-          <article className="evidence-card" key={item.id || item.url || index}>
-            <div className="evidence-card-top">
-              <span>{sourceDomain(item.url)}</span>
-              {typeof item.score === "number" && (
-                <b>{Math.round(item.score * 100)}% relevance</b>
-              )}
-            </div>
-            {item.url ? (
-              <a href={item.url} target="_blank" rel="noreferrer">
-                {item.source || "Open source"}
-                <Icon name="external" />
-              </a>
-            ) : (
-              <strong>{item.source || "Source"}</strong>
-            )}
-          </article>
-        ))}
       </div>
-    </section>
+
+      <p className="evidence-intro-message">
+        FinAssist retrieved and cross-referenced the following verified regulatory frameworks, central bank guidelines, and institutional disclosures to substantiate the risk analysis above:
+      </p>
+
+      <section className="evidence-section" aria-label="Retrieved Evidence Sources">
+        <div className="evidence-list">
+          {sortedEvidence.map((item, index) => {
+            const domain = sourceDomain(item.url);
+            const scorePercent = typeof item.score === "number" ? Math.round(item.score * 100) : null;
+            const title = item.source || item.title || "Financial Disclosure / Policy Document";
+
+            return (
+              <div className="evidence-item-row" key={item.id || item.url || index}>
+                <div className="evidence-index-badge">
+                  <span>{index + 1}</span>
+                </div>
+
+                <div className="evidence-info">
+                  <div className="evidence-meta-row">
+                    <span className="evidence-domain-pill">{domain}</span>
+                    {scorePercent !== null && (
+                      <span className="evidence-score-pill">
+                        <span className="score-dot" />
+                        {scorePercent}% relevance
+                      </span>
+                    )}
+                  </div>
+
+                  {item.url ? (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="evidence-link-title"
+                      title={`Visit ${title}`}
+                    >
+                      <span>{title}</span>
+                      <Icon name="external" />
+                    </a>
+                  ) : (
+                    <span className="evidence-static-title">{title}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -817,6 +890,37 @@ function Icon({ name }) {
         <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
       </>
     ),
+    shield: (
+      <>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+      </>
+    ),
+    "thumbs-up": (
+      <>
+        <path d="M7 10v12" />
+        <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3Z" />
+      </>
+    ),
+    "thumbs-down": (
+      <>
+        <path d="M17 14V2" />
+        <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3Z" />
+      </>
+    ),
+    share: (
+      <>
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+      </>
+    ),
+    check: (
+      <>
+        <polyline points="20 6 9 17 4 12" />
+      </>
+    ),
   };
   return (
     <svg
@@ -829,10 +933,12 @@ function Icon({ name }) {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      {paths[name]}
+      {paths[name] || null}
     </svg>
   );
 }
+
+export const MessageCard = ChatMessage;
 
 function currentViewFromHash() {
   return window.location.hash === "#/subscription" ? "subscription" : "chat";
