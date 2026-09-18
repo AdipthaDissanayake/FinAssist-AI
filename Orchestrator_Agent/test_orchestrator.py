@@ -1,5 +1,6 @@
 """Offline checks for the IR → Risk Agent coordination flow."""
 
+import unittest
 from Orchestrator_Agent.O1 import orchestrate_financial_question
 
 
@@ -45,18 +46,23 @@ def fake_risk_analysis(query, evidence):
     }
 
 
-def test_orchestrator_preserves_evidence_and_returns_trace():
-    result = orchestrate_financial_question(
-        "What are the risks of a variable-rate loan?", retrieve=fake_retrieval, analyse=fake_risk_analysis
-    )
-    assert result["risk_analysis"]["risks"][0]["evidence_ids"] == ["ev-1"]
-    assert len(result["risk_analysis"]["risks"]) == 2
-    assert result["risk_analysis"]["summary"]
-    assert result["risk_analysis"]["risks"][1]["level"] == "High"
-    assert result["risk_analysis"]["risks"][1]["explanation"]
-    assert result["risk_analysis"]["risks"][1]["evidence_ids"] == ["ev-1"]
-    assert result["risk_analysis"]["sources"][0]["source"] == "Test regulator"
-    assert result["risk_analysis"]["disclaimer"]
-    assert [step["agent"] for step in result["agent_trace"]] == ["information-retrieval", "risk-analysis"]
-    assert "Interest-rate risk" in result["final_response"]
-    assert "Level rationale" in result["final_response"]
+class OrchestratorUnitTests(unittest.TestCase):
+    def test_orchestrator_preserves_evidence_and_returns_trace(self):
+        result = orchestrate_financial_question(
+            "What are the risks of a variable-rate loan?", retrieve=fake_retrieval, analyse=fake_risk_analysis
+        )
+        self.assertEqual(result["risk_analysis"]["risks"][0]["evidence_ids"], ["ev-1"])
+        self.assertEqual(len(result["risk_analysis"]["risks"]), 2)
+        self.assertTrue(result["risk_analysis"]["summary"])
+        self.assertEqual(result["risk_analysis"]["risks"][1]["level"], "High")
+        self.assertTrue(result["risk_analysis"]["risks"][1]["explanation"])
+        self.assertEqual(result["risk_analysis"]["risks"][1]["evidence_ids"], ["ev-1"])
+        self.assertEqual(result["risk_analysis"]["sources"][0]["source"], "Test regulator")
+        self.assertTrue(result["risk_analysis"]["disclaimer"])
+        self.assertEqual([step["agent"] for step in result["agent_trace"]], ["information-retrieval", "risk-analysis"])
+        self.assertIn("Interest-rate risk", result["final_response"])
+        self.assertIn("Level rationale", result["final_response"])
+
+
+if __name__ == "__main__":
+    unittest.main()

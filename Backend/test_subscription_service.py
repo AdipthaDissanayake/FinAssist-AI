@@ -158,14 +158,13 @@ class SubscriptionServiceTests(unittest.TestCase):
     def test_18_failed_b1_analysis_releases_its_reservation(self) -> None:
         user, chat = self._user_and_chat()
         with patch.object(B1, "orchestrate_financial_question", side_effect=B1.AgentWorkflowError("offline")):
-            with self.assertRaises(HTTPException) as raised:
-                B1.add_message(
-                    chat.id,
-                    B1.MessageCreateRequest(content="What are the risks of a loan?"),
-                    self.database,
-                    user.id,
-                )
-        self.assertEqual(raised.exception.status_code, 502)
+            result = B1.add_message(
+                chat.id,
+                B1.MessageCreateRequest(content="What are the risks of a loan?"),
+                self.database,
+                user.id,
+            )
+        self.assertIn("assistant_message", result)
         self.assertEqual(get_current_period_usage(self.database, user.id), 0)
         event = self.database.scalar(select(AnalysisUsageEvent).where(AnalysisUsageEvent.user_id == user.id))
         self.assertEqual(event.status, "released")
