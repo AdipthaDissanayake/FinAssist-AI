@@ -519,9 +519,12 @@ function Welcome({ onSuggestion, inputRef }) {
 }
 
 function ChatMessage({ message, onSuggestion }) {
-  const [feedback, setFeedback] = useState(null); // 'like' | 'dislike' | null
+  const [feedback, setFeedback] = useState(null);
   const [copied, setCopied] = useState(false);
+
+  // Support both old and new backend response formats.
   const metadata = message.extra_data || message.metadata || {};
+
   const riskAnalysis = metadata.risk_analysis;
   const decisionSupport = metadata.decision_support;
   const suggestedQuestions = metadata.suggested_questions || [];
@@ -530,13 +533,24 @@ function ChatMessage({ message, onSuggestion }) {
 
   const handleShare = () => {
     let shareText = message.content || "";
+
     if (riskAnalysis) {
-      const summaryText = riskAnalysis.summary ? `Summary:\n${riskAnalysis.summary}\n\n` : "";
+      const summaryText = riskAnalysis.summary
+        ? `Summary:\n${riskAnalysis.summary}\n\n`
+        : "";
+
       const risksText = (riskAnalysis.risks || [])
-        .map((r) => `• ${r.name} (${r.level}): ${r.explanation}`)
+        .map(
+          (risk) =>
+            `• ${risk.name} (${risk.level}): ${risk.explanation}`,
+        )
         .join("\n");
-      shareText = `FinAssist Financial Risk Analysis:\n\n${summaryText}Identified Risks:\n${risksText}`;
+
+      shareText =
+        `FinAssist Financial Risk Analysis:\n\n` +
+        `${summaryText}Identified Risks:\n${risksText}`;
     }
+
     navigator.clipboard.writeText(shareText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -545,59 +559,82 @@ function ChatMessage({ message, onSuggestion }) {
   return (
     <article className={`message ${isUser ? "user" : "assistant"}`}>
       <div className="avatar">{isUser ? "You" : "FA"}</div>
+
       <div className="message-body">
-        <p className="message-role">{isUser ? "You" : "FinAssist"}</p>
+        <p className="message-role">
+          {isUser ? "You" : "FinAssist"}
+        </p>
+
         {riskAnalysis ? (
           <>
             <RiskAnalysisResult
               analysis={riskAnalysis}
               evidence={retrieval?.evidence}
             />
+
             {decisionSupport && (
               <DecisionSupportResult support={decisionSupport} />
             )}
+
             <AIModelDisclaimer customText={riskAnalysis.disclaimer} />
           </>
         ) : (
           <>
-            <div className="message-text">{message.content}</div>
+            <div className="message-text">
+              {message.content}
+            </div>
+
             {retrieval?.evidence?.length > 0 && (
               <EvidenceCards evidence={retrieval.evidence} />
             )}
+
             {decisionSupport && (
               <DecisionSupportResult support={decisionSupport} />
             )}
+
             {!isUser && <AIModelDisclaimer />}
           </>
         )}
+
         {suggestedQuestions?.length > 0 && (
           <SuggestedQuestions
             questions={suggestedQuestions}
             onSelect={onSuggestion}
           />
         )}
+
         {!isUser && (
           <div className="message-actions">
             <button
               type="button"
-              className={`action-btn ${feedback === "like" ? "active like" : ""}`}
-              onClick={() => setFeedback(feedback === "like" ? null : "like")}
+              className={`action-btn ${
+                feedback === "like" ? "active like" : ""
+              }`}
+              onClick={() =>
+                setFeedback(feedback === "like" ? null : "like")
+              }
               title="Helpful response"
               aria-label="Helpful response"
             >
               <Icon name="thumbs-up" />
               <span>Helpful</span>
             </button>
+
             <button
               type="button"
-              className={`action-btn ${feedback === "dislike" ? "active dislike" : ""}`}
-              onClick={() => setFeedback(feedback === "dislike" ? null : "dislike")}
+              className={`action-btn ${
+                feedback === "dislike" ? "active dislike" : ""
+              }`}
+              onClick={() =>
+                setFeedback(feedback === "dislike" ? null : "dislike")
+              }
               title="Not helpful"
               aria-label="Not helpful"
             >
               <Icon name="thumbs-down" />
               <span>Not helpful</span>
             </button>
+
             <button
               type="button"
               className={`action-btn ${copied ? "copied" : ""}`}
@@ -858,6 +895,12 @@ function sourceDomain(url) {
 
 function Icon({ name }) {
   const paths = {
+    shield: (
+  <>
+    <path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3Z" />
+    <path d="m9 12 2 2 4-4" />
+  </>
+),
     plus: (
       <>
         <path d="M12 5v14M5 12h14" />
@@ -923,11 +966,7 @@ function Icon({ name }) {
         <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
       </>
     ),
-    shield: (
-      <>
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-      </>
-    ),
+    
     "thumbs-up": (
       <>
         <path d="M7 10v12" />

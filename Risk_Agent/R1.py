@@ -464,30 +464,58 @@ def analyze_financial_risks(
     actual_model_used = selected_model
     if is_injected_client:
         try:
-            response = client.models.generate_content(model=selected_model, contents=prompt, config=config)
+            response = client.models.generate_content(
+                model=selected_model,
+                contents=prompt,
+                config=config,
+            )
             actual_model_used = selected_model
         except Exception as exc:
             raise RuntimeError(f"Gemini API call failed: {exc}") from exc
+
     elif client is not None:
-        # Live client attempts
+        # Live Gemini client: retry transient provider failures and try fallback models.
+        last_exc = None
+
         for candidate_model in models_to_attempt:
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
-                    response = client.models.generate_content(model=candidate_model, contents=prompt, config=config)
+                    response = client.models.generate_content(
+                        model=candidate_model,
+                        contents=prompt,
+                        config=config,
+                    )
+
                     actual_model_used = candidate_model
                     break
-                except Exception:
-                    if attempt < 1:
-                        time.sleep(0.5)
+
+                except Exception as exc:
+                    last_exc = exc
+
+                    print(
+                        f"Gemini attempt {attempt + 1} failed "
+                        f"for model {candidate_model}: {exc}"
+                    )
+
+                    if attempt < 2:
+                        time.sleep(1)
+
             if response is not None:
                 break
 
     if response is None:
-        # Fallback to resilient grounded evidence analysis
-        summary, summary_evidence_ids, risks = _fallback_evidence_risk_analysis(request.query, request.evidence)
+        # If Gemini is unavailable, keep the system usable with grounded evidence.
+        summary, summary_evidence_ids, risks = _fallback_evidence_risk_analysis(
+            request.query,
+            request.evidence,
+        )
         actual_model_used = "finassist-grounded-fallback"
+
     else:
-        summary, summary_evidence_ids, risks = _validate_model_analysis(_parse_json_response(_response_text(response)), request.evidence)
+        summary, summary_evidence_ids, risks = _validate_model_analysis(
+            _parse_json_response(_response_text(response)),
+            request.evidence,
+        )
 
     return RiskAnalysisResponse(
         summary=summary,
