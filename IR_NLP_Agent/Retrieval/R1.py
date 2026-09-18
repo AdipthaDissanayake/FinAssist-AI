@@ -293,10 +293,11 @@ class TavilyRetriever:
 
     def search(self, query: str, top_k: int = 5) -> dict[str, Any]:
         _validate_query(query, top_k)
-        processed_query = self.nlp.preprocess_query(query) or query
+        corrected_query, _ = self.nlp.correct_finance_spelling(query)
+        processed_query = self.nlp.preprocess_query(corrected_query) or corrected_query
         try:
             response = self._client.search(
-                query=_tavily_finance_query(query),
+                query=_tavily_finance_query(corrected_query),
                 search_depth=os.getenv("TAVILY_SEARCH_DEPTH", "basic"),
                 max_results=top_k,
                 include_domains=self.include_domains,
@@ -561,7 +562,22 @@ def _trusted_finance_domains() -> list[str]:
 
 
 def _tavily_finance_query(query: str) -> str:
-    return f"{query} financial education risk information"
+    """Format search query for financial risk and consumer protection retrieval.
+
+    Avoid appending generic 'education' because it causes search engines to bias
+    heavily toward student-education loans and ombudsman reports rather than
+    general borrowing and consumer risks.
+    """
+    lowered = query.lower()
+    if any(term in lowered for term in ("loan", "borrow", "debt", "mortgage", "credit")):
+        return f"{query} borrowing risks repayment terms interest rate considerations"
+    if any(term in lowered for term in ("invest", "stock", "share", "portfolio", "etf", "bond")):
+        return f"{query} investment risks considerations volatility returns"
+    if any(term in lowered for term in ("saving", "deposit", "fixed deposit", "emergency fund")):
+        return f"{query} savings risks considerations interest rates liquidity"
+    if any(term in lowered for term in ("budget", "income", "expense", "spending")):
+        return f"{query} budgeting planning financial risks debt management"
+    return f"{query} financial risks and considerations"
 
 
 def _optional_score(value: Any) -> float | None:

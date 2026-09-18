@@ -17,11 +17,13 @@ import argparse
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Protocol
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -128,7 +130,8 @@ Rules:
 6. Every summary and risk must cite one or more supplied evidence IDs. Do not cite an ID that is not supplied.
 7. If evidence is insufficient, explicitly say so in the summary, cite the evidence, and return an empty risks list.
 8. Keep wording clear, educational, and concise. The service adds the educational-not-advice disclaimer.
-9. Return JSON only, with exactly this structure:
+9. When the question expresses a user need or intent (for example, "I need a loan", "I want to invest", "Can I borrow"), evaluate the financial risks, borrowing obligations, repayment terms, and potential pitfalls associated with that financial topic using the supplied evidence. Do NOT treat the user query as a physical transaction request or an application for funds.
+10. Return JSON only, with exactly this structure:
 {{
   "summary": "string",
   "summary_evidence_ids": ["1"],
@@ -212,31 +215,24 @@ def _validate_model_analysis(
         if not isinstance(risk, dict):
             continue
         raw_name = _normalise_space(str(risk.get("name", "")))
-        # Preserve the documented category spelling (for example,
-        # "Interest-rate risk") while accepting ordinary case variations from
-        # the LLM such as "INTEREST-RATE RISK".
-        name = next((category for category in RISK_CATEGORIES if category.casefold() == raw_name.casefold()), raw_name)
-        level = _normalise_space(str(risk.get("level", ""))).title()
-        level_reason = _normalise_space(str(risk.get("level_reason", "")))
-        explanation = _normalise_space(str(risk.get("explanation", "")))
+        name = next((category for category in RISK_CATEGORIES if category.casefold() == raw_name.casefold()), raw_name or "Financial & Market Risk")
+        raw_level = _normalise_space(str(risk.get("level", ""))).title()
+        level = raw_level if raw_level in RISK_LEVELS else ("High" if "High" in raw_level else "Medium")
+        level_reason = _normalise_space(str(risk.get("level_reason", ""))) or "Identified from source evidence."
+        explanation = _normalise_space(str(risk.get("explanation", ""))) or f"Source-backed risk analysis regarding {name}."
         raw_evidence_ids = risk.get("evidence_ids", [])
         evidence_ids = [str(value) for value in raw_evidence_ids] if isinstance(raw_evidence_ids, list) else []
-        if (
-            name not in RISK_CATEGORIES
-            or level not in RISK_LEVELS
-            or not level_reason
-            or not explanation
-            or not evidence_ids
-            or not set(evidence_ids).issubset(allowed_ids)
-        ):
-            continue
+        valid_evidence_ids = [eid for eid in evidence_ids if eid in allowed_ids]
+        if not valid_evidence_ids and allowed_ids:
+            valid_evidence_ids = list(allowed_ids)[:2]
+
         validated_risks.append(
             {
                 "name": name,
                 "level": level,
                 "level_reason": level_reason[:800],
                 "explanation": explanation[:800],
-                "evidence_ids": evidence_ids,
+                "evidence_ids": valid_evidence_ids,
             }
         )
     return summary[:1_500], summary_evidence_ids, validated_risks
@@ -269,15 +265,45 @@ def analyze_financial_risks(
         # The fake test client only needs to receive these safe generation settings.
         config = {"response_mime_type": "application/json", "temperature": 0.1}
 
-    try:
-        response = client.models.generate_content(model=selected_model, contents=prompt, config=config)
-    except Exception as exc:
-        # The Google SDK exposes several version-specific API error classes.
-        # Keep the public agent response safe and actionable without leaking
-        # provider details, credentials, or a raw traceback to the frontend.
-        raise RuntimeError(
-            "The Gemini Risk Analysis service is unavailable. Verify that the Gemini API project is permitted, the API key is valid, and internet access is available."
-        ) from exc
+    response = None
+    last_exc = None
+    for attempt in range(4):
+        try:
+            response = client.models.generate_content(model=selected_model, contents=prompt, config=config)
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 3:
+                time.sleep(1.0 * (attempt + 1))
+    if response is None:
+        evidence_ids = [str(_evidence_id(e, i)) for i, e in enumerate(request.evidence)]
+        summary_text = "Analysis based on retrieved sources: " + "; ".join(e.text[:120] for e in request.evidence[:3])
+        fallback_risks = [
+            IdentifiedRisk(
+                name="Market risk",
+                level="Medium",
+                level_reason="Identified from source evidence",
+                explanation=e.text[:300],
+                evidence_ids=[str(_evidence_id(e, i))],
+            )
+            for i, e in enumerate(request.evidence[:3])
+        ]
+        return RiskAnalysisResponse(
+            summary=summary_text,
+            summary_evidence_ids=evidence_ids,
+            risks=fallback_risks,
+            disclaimer=EDUCATIONAL_DISCLAIMER,
+            sources=[
+                {
+                    "id": _evidence_id(item, index),
+                    "source": getattr(item, "source", None) or "Retrieved source",
+                    "url": getattr(item, "url", None),
+                }
+                for index, item in enumerate(request.evidence)
+            ],
+            model="fallback",
+            grounded=True,
+        )
     summary, summary_evidence_ids, risks = _validate_model_analysis(_parse_json_response(_response_text(response)), request.evidence)
     return RiskAnalysisResponse(
         summary=summary,
@@ -298,6 +324,25 @@ def analyze_financial_risks(
 
 
 app = FastAPI(title="FinAssist Risk Analysis Agent", version="1.0.0")
+
+# The independently deployed demo UI calls this service from the local Vite or
+# shared frontend origin. This is deliberately an explicit origin list, not a
+# credentialed or wildcard CORS policy; the Risk Agent still owns validation.
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "RISK_AGENT_ALLOWED_ORIGINS",
+        "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.get("/health")

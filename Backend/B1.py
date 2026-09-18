@@ -9,12 +9,15 @@ Until then, chats are unowned development records (`user_id` is NULL).
 
 from __future__ import annotations
 
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -22,10 +25,26 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from .database import get_database_session, initialise_database
-from .models import Chat, Message, RetrievalEvidence, RetrievalRun
+from .models import AnalysisUsageEvent, Chat, Message, Plan, RetrievalEvidence, RetrievalRun
+from .subscription_routes import get_verified_user_id, router as subscription_router
+from .subscription_service import (
+    MonthlyAnalysisLimitReachedError,
+    PlanNotAvailableError,
+    SubscriptionServiceError,
+    can_perform_analysis,
+    complete_reserved_analysis,
+    get_active_subscription,
+    get_current_period_usage,
+    get_remaining_monthly_analyses,
+    release_reserved_analysis,
+    reserve_analysis,
+)
 from IR_NLP_Agent.NLP.N1 import DomainAssessment, FinanceNLP
 from Orchestrator_Agent.O1 import AgentWorkflowError, orchestrate_financial_question
 
+from .auth_routes import router as auth_router
+from .auth import get_current_user, get_current_user_optional
+from .models import User
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIRECTORY = PROJECT_ROOT / "Frontend"
@@ -49,6 +68,9 @@ class MessageCreateRequest(BaseModel):
 
 
 app = FastAPI(title="FinAssist AI", version="0.2.0")
+app.include_router(subscription_router)
+app.include_router(auth_router)
+
 if FRONTEND_BUILD_DIRECTORY.is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_BUILD_DIRECTORY / "assets"), name="react-assets")
 
@@ -76,15 +98,26 @@ def health(database: Session = Depends(get_database_session)) -> dict[str, str]:
 
 
 @app.get("/api/chats")
-def list_chats(database: Session = Depends(get_database_session)) -> list[dict[str, Any]]:
-    chats = database.scalars(select(Chat).order_by(desc(Chat.updated_at))).all()
+def list_chats(
+    database: Session = Depends(get_database_session),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> list[dict[str, Any]]:
+    if current_user:
+        chats = database.scalars(
+            select(Chat).where(Chat.user_id == current_user.id).order_by(desc(Chat.updated_at))
+        ).all()
+    else:
+        chats = database.scalars(select(Chat).order_by(desc(Chat.updated_at))).all()
     return [_chat_payload(database, chat) for chat in chats]
 
 
 @app.post("/api/chats", status_code=status.HTTP_201_CREATED)
-def create_chat(request: ChatCreateRequest, database: Session = Depends(get_database_session)) -> dict[str, Any]:
-    # TODO Taniya: get the ID from verified JWT claims, never from the browser body.
-    chat = Chat(user_id=None, title=_clean_title(request.title) or "New financial question")
+def create_chat(
+    request: ChatCreateRequest, 
+    database: Session = Depends(get_database_session),
+    current_user: User = Depends(get_current_user)
+) -> dict[str, Any]:
+    chat = Chat(user_id=current_user.id, title=_clean_title(request.title) or "New financial question")
     database.add(chat)
     database.commit()
     database.refresh(chat)
@@ -98,9 +131,20 @@ def list_messages(chat_id: str, database: Session = Depends(get_database_session
     return {"chat": _chat_payload(database, chat), "messages": [_message_payload(database, message) for message in messages]}
 
 
+@app.delete("/api/chats/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_chat(chat_id: str, database: Session = Depends(get_database_session)) -> Response:
+    chat = _require_chat(database, chat_id)
+    database.delete(chat)
+    database.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/api/chats/{chat_id}/messages", status_code=status.HTTP_201_CREATED)
 def add_message(
-    chat_id: str, request: MessageCreateRequest, database: Session = Depends(get_database_session)
+    chat_id: str,
+    request: MessageCreateRequest,
+    database: Session = Depends(get_database_session),
+    user_id: str = Depends(get_verified_user_id),
 ) -> dict[str, Any]:
     """Store a question and run the IR → Risk Analysis agent workflow."""
     chat = _require_chat(database, chat_id)
@@ -145,9 +189,47 @@ def add_message(
         }
 
     try:
+        has_remaining_quota = can_perform_analysis(database, user_id)
+        existing_usage_event = database.scalar(
+            select(AnalysisUsageEvent.id).where(AnalysisUsageEvent.message_id == user_message.id)
+        )
+        if not has_remaining_quota and existing_usage_event is None:
+            database.commit()
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content=_subscription_limit_response(database, user_id),
+            )
+        try:
+            # Reservation remains authoritative even after a negative pre-check:
+            # an existing message ID may be safely retried without consuming a
+            # second allowance.
+            reserve_analysis(database, user_id, user_message.id)
+        except MonthlyAnalysisLimitReachedError:
+            database.commit()
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content=_subscription_limit_response(database, user_id),
+            )
+        # Persist the reservation before any Tavily, Gemini, or agent work.
+        database.commit()
+    except PlanNotAvailableError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Subscription plans are temporarily unavailable.",
+        ) from exc
+    except SubscriptionServiceError as exc:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The subscription service is temporarily unavailable.",
+        ) from exc
+
+    try:
         workflow = orchestrate_financial_question(corrected_query, top_k=request.top_k)
         retrieval = workflow["retrieval"]
     except AgentWorkflowError as exc:
+        release_reserved_analysis(database, user_id, user_message.id)
         failure = RetrievalRun(
             message_id=user_message.id,
             status="failed",
@@ -164,10 +246,19 @@ def add_message(
         )
         database.add(assistant_message)
         database.commit()
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The source-backed risk analysis is temporarily unavailable. Please try again shortly.",
-        ) from exc
+        database.refresh(assistant_message)
+        return {
+            "user_message": _message_payload(database, user_message),
+            "assistant_message": _message_payload(database, assistant_message),
+        }
+    except Exception:
+        # The reservation was committed before external work.  Release it even
+        # for an unexpected orchestration failure so it does not consume quota.
+        release_reserved_analysis(database, user_id, user_message.id)
+        database.commit()
+        raise
+
+    complete_reserved_analysis(database, user_id, user_message.id)
 
     retrieval_run = RetrievalRun(
         message_id=user_message.id,
@@ -276,6 +367,33 @@ def _retrieval_payload(database: Session, retrieval_run: RetrievalRun) -> dict[s
 
 def _clean_title(value: str | None, limit: int = 160) -> str:
     return " ".join((value or "").split())[:limit].rstrip()
+
+
+def _subscription_limit_response(database: Session, user_id: str) -> dict[str, Any]:
+    """Build the quota response from the persisted subscription plan state."""
+
+    subscription = get_active_subscription(database, user_id)
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The active subscription could not be resolved.",
+        )
+    plan = database.get(Plan, subscription.plan_code)
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The active subscription plan could not be resolved.",
+        )
+    used = get_current_period_usage(database, user_id)
+    remaining = get_remaining_monthly_analyses(database, user_id)
+    return {
+        "error": "subscription_limit_reached",
+        "message": "Monthly analysis limit reached.",
+        "plan": plan.code,
+        "used": used,
+        "limit": plan.monthly_analysis_limit,
+        "remaining": remaining,
+    }
 
 
 def _domain_guard_response(assessment: DomainAssessment) -> tuple[str, list[dict[str, str]]]:
