@@ -395,6 +395,11 @@ export default function App() {
           <SubscriptionPage
             quotaLimitReached={quotaLimitReached}
             onDismissQuotaLimit={() => setQuotaLimitReached(false)}
+            isLoggedIn={isLoggedIn}
+            onOpenAuth={(mode) => {
+              setAuthMode(mode || "register");
+              setIsAuthOpen(true);
+            }}
           />
         ) : (
           <>

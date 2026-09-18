@@ -101,6 +101,24 @@ class AnalysisUsageEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class PaymentMethod(Base):
+    """Saved payment method (masked card details) for a user."""
+
+    __tablename__ = "payment_methods"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    card_holder_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    brand: Mapped[str] = mapped_column(String(30), default="visa", nullable=False)
+    last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    exp_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    exp_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class Chat(Base):
     """A conversation containing multiple questions and agent outputs."""
 
