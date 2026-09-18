@@ -418,16 +418,78 @@ def fallback_considerations_for_risk(
             ),
         ]
 
+    if (
+        "credit" in name
+        or "default" in name
+        or "counterparty" in name
+        or "insolvency" in name
+    ):
+        return [
+            "Assess the creditworthiness and financial health of the issuing institution or counterparty.",
+            "Review whether default guarantees, deposit insurance, or collateral protections apply.",
+            "Consider exposure limits to prevent heavy losses if an issuer defaults.",
+        ]
+
+    if (
+        "market" in name
+        or "volatility" in name
+        or "price" in name
+    ):
+        return [
+            "Evaluate your investment horizon against short-term price fluctuations and drawdowns.",
+            "Determine your personal risk tolerance for potential capital drawdowns during market swings.",
+            "Consider dollar-cost averaging or staggered entry rather than lump-sum timing.",
+        ]
+
+    if (
+        "currency" in name
+        or "exchange" in name
+        or "forex" in name
+        or "devaluation" in name
+    ):
+        return [
+            "Analyze how foreign exchange rate shifts could reduce net yields or purchasing power.",
+            "Review whether currency hedging strategies or local-currency alternatives are viable.",
+            "Consider central bank foreign reserve and monetary policy trends impacting exchange rates.",
+        ]
+
+    if (
+        "regulatory" in name
+        or "policy" in name
+        or "legal" in name
+        or "tax" in name
+    ):
+        return [
+            "Verify current regulatory compliance and tax obligations applicable to this instrument.",
+            "Check for potential policy, capital control, or statutory amendments that may impact holding conditions.",
+            "Consult qualified legal or tax advisory professionals for complex jurisdictional rules.",
+        ]
+
+    if (
+        "operational" in name
+        or "cyber" in name
+        or "systemic" in name
+    ):
+        return [
+            "Examine platform uptime, settlement safeguards, and operational infrastructure reliability.",
+            "Review cybersecurity protocols, two-factor authentication, and account custody safety measures.",
+            "Verify dispute resolution procedures in case of technical execution errors or disruptions.",
+        ]
+
+    if (
+        "sovereign" in name
+        or "country" in name
+        or "geopolitical" in name
+    ):
+        return [
+            "Assess the geopolitical stability, sovereign debt ratings, and economic outlook of the jurisdiction.",
+            "Review capital repatriation rules and international transfer constraints.",
+        ]
+
     return [
-        f"Review the conditions connected with {risk_name}.",
-        (
-            f"Consider how {risk_name} could affect your "
-            "financial situation."
-        ),
-        (
-            "Check the relevant terms, costs, restrictions, "
-            "and supporting evidence before deciding."
-        ),
+        f"Review the terms and conditions connected with {risk_name}.",
+        f"Consider how {risk_name} could affect your overall financial situation.",
+        "Check the relevant costs, restrictions, and supporting evidence before deciding.",
     ]
 
 

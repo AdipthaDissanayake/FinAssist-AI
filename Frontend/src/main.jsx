@@ -518,6 +518,7 @@ function ChatMessage({ message, onSuggestion }) {
   const [copied, setCopied] = useState(false);
   const metadata = message.extra_data || message.metadata || {};
   const riskAnalysis = metadata.risk_analysis;
+  const decisionSupport = metadata.decision_support;
   const suggestedQuestions = metadata.suggested_questions || [];
   const retrieval = metadata.retrieval;
   const isUser = message.role === "user";
@@ -542,16 +543,26 @@ function ChatMessage({ message, onSuggestion }) {
       <div className="message-body">
         <p className="message-role">{isUser ? "You" : "FinAssist"}</p>
         {riskAnalysis ? (
-          <RiskAnalysisResult
-            analysis={riskAnalysis}
-            evidence={retrieval?.evidence}
-          />
+          <>
+            <RiskAnalysisResult
+              analysis={riskAnalysis}
+              evidence={retrieval?.evidence}
+            />
+            {decisionSupport && (
+              <DecisionSupportResult support={decisionSupport} />
+            )}
+            <AIModelDisclaimer customText={riskAnalysis.disclaimer} />
+          </>
         ) : (
           <>
             <div className="message-text">{message.content}</div>
             {retrieval?.evidence?.length > 0 && (
               <EvidenceCards evidence={retrieval.evidence} />
             )}
+            {decisionSupport && (
+              <DecisionSupportResult support={decisionSupport} />
+            )}
+            {!isUser && <AIModelDisclaimer />}
           </>
         )}
         {suggestedQuestions?.length > 0 && (
@@ -676,45 +687,62 @@ function RiskAnalysisResult({ analysis, evidence }) {
       {(evidence?.length > 0 ? evidence : (analysis?.sources?.length > 0 ? analysis.sources : []))?.length > 0 && (
         <EvidenceCards evidence={evidence?.length > 0 ? evidence : analysis.sources} />
       )}
-
-      <div className="risk-disclaimer-card" role="note">
-        <div className="disclaimer-header">
-          <Icon name="shield" />
-          <span>AI Model Notice & Educational Disclaimer</span>
-        </div>
-        <p className="disclaimer-body">
-          {analysis.disclaimer ||
-            "This is educational financial information, not personalised investment or lending advice. Consider a qualified financial professional for decisions about your circumstances."}
-        </p>
-        <p className="disclaimer-notice">
-          ⚠️ <em>FinAssist is an AI assistant. AI models can make mistakes or have incomplete market context. Always verify crucial financial decisions with certified professionals or official regulatory disclosures.</em>
-        </p>
-      </div>
     </section>
   );
 }
 
-function DecisionSupportResult({ support }) {
+function AIModelDisclaimer({ customText }) {
   return (
-    <section className="decision-support">
-      <p className="result-heading">Things to consider</p>
+    <div className="risk-disclaimer-card" role="note">
+      <div className="disclaimer-header">
+        <Icon name="shield" />
+        <span>AI Model Notice & Educational Disclaimer</span>
+      </div>
+      <p className="disclaimer-body">
+        {customText ||
+          "This is educational information, not personalised financial, investment, or lending advice. FinAssist is an AI assistant and can make mistakes or have incomplete market context. Consider a qualified financial professional for decisions about your circumstances."}
+      </p>
+      <p className="disclaimer-notice">
+        ⚠️ <em>FinAssist is an AI assistant. AI models can make mistakes or have incomplete market context. Always verify crucial financial decisions with certified professionals or official regulatory disclosures.</em>
+      </p>
+    </div>
+  );
+}
 
-      {support.considerations?.map((item) => (
-        <article className="decision-card" key={item.risk}>
-          <h3>{item.risk}</h3>
+function DecisionSupportResult({ support }) {
+  if (!support) return null;
+  const considerations = support.considerations || [];
+  const questions = support.questions_to_consider || [];
+  if (considerations.length === 0 && questions.length === 0) return null;
+
+  return (
+    <section className="decision-support" aria-label="Financial decision considerations">
+      <h2 className="section-heading">
+        <Icon name="spark" /> Key Decision-Making Considerations
+      </h2>
+
+      {considerations.map((item, idx) => (
+        <article className="decision-card" key={item.risk || idx}>
+          <div className="decision-card-heading">
+            <h3>{item.risk}</h3>
+            {item.level && (
+              <span className={`risk-level risk-level-${String(item.level).toLowerCase()}`}>
+                {item.level}
+              </span>
+            )}
+          </div>
 
           {item.things_to_consider?.map((consideration, index) => (
-  <p key={index}>{consideration}</p>
-))}
+            <p key={index}>{consideration}</p>
+          ))}
         </article>
       ))}
 
-      {support.questions_to_consider?.length > 0 && (
+      {questions.length > 0 && (
         <div className="decision-questions">
           <p className="result-heading">Questions to ask before deciding</p>
-
           <ul>
-            {support.questions_to_consider.map((item, index) => (
+            {questions.map((item, index) => (
               <li key={index}>{item}</li>
             ))}
           </ul>

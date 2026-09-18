@@ -6,6 +6,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from Decision_Support_Agent.D1 import generate_decision_support
 from IR_NLP_Agent.main import retrieve_financial_evidence
 from Risk_Agent.R1 import analyze_financial_risks
 
@@ -222,10 +223,11 @@ def orchestrate_financial_question(
     *,
     retrieve: Callable[..., dict[str, Any]] = retrieve_financial_evidence,
     analyse: Callable[..., dict[str, Any]] = analyze_financial_risks,
+    support: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """
     Coordinate the complete flow:
-    IR Agent -> Risk Agent -> Final response.
+    IR Agent -> Risk Agent -> Decision Support Agent -> Final response.
     """
 
     trace = []
@@ -334,7 +336,22 @@ def orchestrate_financial_question(
     )
 
     # -------------------------------------------------
-    # Step 5 - Final response
+    # Step 5 - Financial Decision Support Agent
+    # -------------------------------------------------
+
+    decision_support = None
+    try:
+        support_fn = support or generate_decision_support
+        decision_support = support_fn(
+            query=query,
+            risk_analysis=risk_analysis,
+            evidence=normalized_evidence,
+        )
+    except Exception:
+        decision_support = None
+
+    # -------------------------------------------------
+    # Step 6 - Final response
     # -------------------------------------------------
 
     final_response = format_risk_analysis(
@@ -345,7 +362,7 @@ def orchestrate_financial_question(
         "query": query,
         "retrieval": retrieval,
         "risk_analysis": risk_analysis,
-        "decision_support": None,
+        "decision_support": decision_support,
         "agent_trace": trace,
         "final_response": final_response,
     }
