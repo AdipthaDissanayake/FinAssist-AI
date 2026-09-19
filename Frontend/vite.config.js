@@ -7,13 +7,15 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: "http://127.0.0.1:8020",
         changeOrigin: true,
       },
+
       "/auth": {
-        target: "http://127.0.0.1:8000",
+        target: "http://127.0.0.1:8020",
         changeOrigin: true,
       },
+
       "/risk-agent": {
         target: "http://127.0.0.1:8001",
         changeOrigin: true,
@@ -21,6 +23,7 @@ export default defineConfig({
       },
     },
   },
+
   build: {
     outDir: "dist",
     emptyOutDir: true,
