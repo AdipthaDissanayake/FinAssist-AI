@@ -757,20 +757,29 @@ function DecisionSupportResult({ support }) {
   );
 }
 function SuggestedQuestions({ questions, onSelect }) {
+  if (!Array.isArray(questions) || questions.length === 0) return null;
   return (
     <section className="message-suggestions" aria-label="Suggested follow-up questions">
       <p>Suggested questions to explore</p>
       <div>
-        {questions.map((question) => (
-          <button
-            key={question}
-            type="button"
-            onClick={() => onSelect(question)}
-          >
-            <span>{question}</span>
-            <Icon name="arrow" />
-          </button>
-        ))}
+        {questions.map((question, idx) => {
+          const text = typeof question === "object" && question !== null
+            ? (question.question || question.label || "")
+            : String(question || "");
+          const label = typeof question === "object" && question !== null
+            ? (question.label || question.question || "")
+            : String(question || "");
+          return (
+            <button
+              key={text || idx}
+              type="button"
+              onClick={() => onSelect(text)}
+            >
+              <span>{label}</span>
+              <Icon name="arrow" />
+            </button>
+          );
+        })}
       </div>
     </section>
   );
