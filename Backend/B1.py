@@ -10,6 +10,7 @@ Until then, chats are unowned development records (`user_id` is NULL).
 from __future__ import annotations
 
 import os
+import re
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
 from datetime import UTC, datetime
@@ -198,13 +199,13 @@ def add_message(
         }
 
     if not domain_assessment.retrieval_allowed:
-        content, suggested_questions = _domain_guard_response(domain_assessment)
+        content, suggested_questions, agent_tag = _domain_guard_response(domain_assessment, cleaned_input)
         assistant_message = Message(
             chat_id=chat.id,
             role="assistant",
             content=content,
             extra_data={
-                "agent": "finance-domain-guard",
+                "agent": agent_tag,
                 "domain_assessment": domain_assessment.to_dict(),
                 "suggested_questions": suggested_questions,
                 "retrieval_skipped": True,
@@ -426,39 +427,139 @@ def _subscription_limit_response(database: Session, user_id: str) -> dict[str, A
     }
 
 
-def _domain_guard_response(assessment: DomainAssessment) -> tuple[str, list[dict[str, str]]]:
-    """Return transparent, useful guardrail messages without an API call."""
+_GREETING_PATTERNS = (
+    re.compile(r"^h+[i!]+$"),
+    re.compile(r"^h+[e]+y+$"),
+    re.compile(r"^h+[e]+l+[o]+$"),
+    re.compile(r"^h+o+w+d+y+$"),
+    re.compile(r"^h+i+y+a+$"),
+    re.compile(r"^s+u+p+$"),
+    re.compile(r"^y+o+$"),
+)
 
-    common_suggestions = [
-        {"label": "Loan repayment risks", "question": "What are the risks of taking a loan?"},
-        {"label": "Investment concentration risk", "question": "What is concentration risk in investing?"},
-        {"label": "Create a personal budget", "question": "How can I create a personal budget?"},
-    ]
+_GREETING_WORDS = frozenset(
+    {
+        "hi", "hii", "hiii", "hello", "hey", "heyy", "hiya", "howdy",
+        "greetings", "sup", "yo", "morning", "evening", "afternoon",
+        "welcome", "gm", "gn", "hola",
+    }
+)
+
+_GREETING_PHRASES = frozenset(
+    {
+        "good morning", "good afternoon", "good evening", "good day", "good night",
+        "hi there", "hello there", "hey there", "how are you", "how are you doing",
+        "how do you do", "how r u", "what is up", "whats up", "what's up",
+        "how is it going", "hows it going", "how's it going", "nice to meet you",
+        "pleased to meet you", "hi finassist", "hello finassist", "hey finassist",
+        "how can i help you", "how can i help you today", "how can i help",
+        "how can you help me", "how can you help", "how can you help me today",
+        "what can you do", "what can you do for me", "what can you help with",
+        "what can you help me with", "what can i ask", "what can i ask you",
+        "what can i do here", "how does this work", "how do you work",
+        "how to use this", "who are you", "what are you", "tell me about yourself",
+        "introduce yourself", "what is finassist", "what is finassist ai",
+        "what is this", "what is this app", "help", "help me", "start",
+    }
+)
+
+
+def _is_greeting(text: str) -> bool:
+    """Return True if the input is a greeting or general conversational hello."""
+    cleaned = re.sub(r"[^\w\s]", "", (text or "").strip().lower())
+    cleaned = " ".join(cleaned.split())
+    if not cleaned:
+        return False
+    if cleaned in _GREETING_PHRASES or cleaned in _GREETING_WORDS:
+        return True
+    for pat in _GREETING_PATTERNS:
+        if pat.match(cleaned):
+            return True
+    words = cleaned.split()
+    if len(words) <= 4 and any(
+        w in _GREETING_WORDS or any(p.match(w) for p in _GREETING_PATTERNS)
+        for w in words
+    ):
+        return True
+    for phrase in _GREETING_PHRASES:
+        if cleaned.startswith(phrase):
+            return True
+    return False
+
+
+def _domain_guard_response(
+    assessment: DomainAssessment,
+    query: str = "",
+) -> tuple[str, list[dict[str, str]], str]:
+    """Return transparent, useful guardrail messages without an API call.
+
+    Returns:
+        (content, suggested_questions, agent_tag)
+    """
     if assessment.category == "gambling-risk":
         return (
             "Betting or gambling can affect a budget through losses, overspending, debt, and pressure to chase losses. "
             "FinAssist can support financial-harm awareness and debt-management questions, but it does not provide betting tips, odds, predictions, or strategies.",
             [
-                {"label": "Budget impact of betting", "question": "How can betting affect my budget and financial wellbeing?"},
-                {"label": "Managing gambling-related debt", "question": "How can I manage gambling-related debt?"},
-                {"label": "Protect emergency savings", "question": "How can I protect my savings while managing gambling spending?"},
+                "How can betting affect my budget and financial wellbeing?",
+                "How can I manage gambling-related debt?",
+                "How can I protect my savings while managing gambling spending?",
             ],
+            "finance-domain-guard",
         )
     if assessment.category == "restricted-gambling":
         return (
             "FinAssist cannot provide betting tips, predictions, odds, or gambling strategies. "
             "It can help with the financial risks of betting, budget impact, savings protection, or gambling-related debt.",
             [
-                {"label": "Financial risks of betting", "question": "What are the financial risks associated with betting?"},
-                {"label": "Budget impact of betting", "question": "How can betting affect my budget and financial wellbeing?"},
-                {"label": "Managing gambling-related debt", "question": "How can I manage gambling-related debt?"},
+                "What are the financial risks associated with betting?",
+                "How can betting affect my budget and financial wellbeing?",
+                "How can I manage gambling-related debt?",
             ],
+            "finance-domain-guard",
         )
+
+    # 1. Greeting message
+    if _is_greeting(query):
+        return (
+            "👋 Hello! Welcome to FinAssist AI.\n\n"
+            "I am your specialized financial research and risk analysis assistant. "
+            "I can help you evaluate financial decisions, assess investment and loan risks, and analyze financial topics using evidence from trusted regulatory and market sources.\n\n"
+            "Here is what you can ask me about:\n"
+            "• 🏦 Loans & Mortgages — Repayment risks, interest rate impacts, debt management\n"
+            "• 📈 Investments & Markets — Stock & bond risk analysis, diversification, ETF evaluation\n"
+            "• 💰 Savings & Budgeting — Fixed deposits, emergency funds, cash flow planning\n"
+            "• 💱 Currency & Forex — Exchange rates, inflation risks, central bank policies\n"
+            "• 🛡️ Financial Protection — Scam identification, consumer protection, credit risk\n\n"
+            "Ask any financial question to get started, or choose one of the suggested topics below:",
+            [
+                "What are the risks of taking a personal loan?",
+                "How does diversification reduce investment risk?",
+                "What should I consider before opening a fixed deposit?",
+                "How do interest rate hikes affect loan repayments?",
+            ],
+            "greeting-assistant",
+        )
+
+    # 2. Non-financial topic message
     return (
-        "FinAssist focuses on financial education and research, so I did not search external sources for that topic. "
-        "I can help with loans, savings, investments, budgets, interest rates, financial scams, and financial risks of betting.",
-        common_suggestions
-        + [{"label": "Financial risks of betting", "question": "What are the financial risks associated with betting?"}],
+        "ℹ️ I can only assist with financial research and education.\n\n"
+        "Your question does not appear to be related to finance, investing, or economics. "
+        "As a dedicated financial AI assistant, my retrieval and risk analysis models are specifically designed for financial topics.\n\n"
+        "You can ask me questions about:\n"
+        "• 📊 Investments & Markets (stocks, bonds, mutual funds, portfolio risk)\n"
+        "• 🏦 Loans & Borrowing (mortgages, personal loans, interest rates, debt)\n"
+        "• 💵 Personal Finance (budgeting, emergency savings, fixed deposits)\n"
+        "• 🌐 Economics & Forex (inflation, currency exchange, treasury bills)\n"
+        "• 🛡️ Consumer Protection (financial scams, credit risk, fraud awareness)\n\n"
+        "Please try asking a financial research question, or select one of the suggested topics below:",
+        [
+            "What are the risks of taking a loan?",
+            "What is concentration risk in investing?",
+            "How can I create a personal budget?",
+            "What are the financial risks associated with betting?",
+        ],
+        "finance-domain-guard",
     )
 
 
